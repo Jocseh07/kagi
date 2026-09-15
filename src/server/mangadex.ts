@@ -8,7 +8,7 @@
  */
 import { cloudflareEnv } from './auth'
 
-const PROJECT_URL = 'https://github.com/kagi-reader/kagi'
+const PROJECT_URL = 'https://github.com/Jocseh07/kagi'
 
 export function mangadexUserAgent(): string {
   const origin = cloudflareEnv<{ APP_ORIGIN?: string }>().APP_ORIGIN?.trim()
