@@ -85,6 +85,9 @@ async function authorizedFetch(
 
   if (!response.ok) {
     if (response.status === 402) throw new Error('Sync needs the Sync plan.')
+    if (response.status === 429) {
+      throw new Error('Too many sync requests. Try again in a minute.')
+    }
     throw new Error(`Sync failed: ${response.status} ${response.statusText}`)
   }
 

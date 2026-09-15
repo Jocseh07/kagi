@@ -36,5 +36,9 @@ declare module 'cloudflare:workers' {
     POLAR_SERVER?: string
     /** This deployment's public origin, for outbound User-Agent contact. From `vars`. */
     APP_ORIGIN?: string
+    /** Per-IP budget for the source proxies. See `ratelimits` in wrangler.jsonc. */
+    RATE_PROXY?: import('@cloudflare/workers-types').RateLimit
+    /** Per-IP budget for the sync and billing routes, checked before auth. */
+    RATE_API?: import('@cloudflare/workers-types').RateLimit
   }
 }

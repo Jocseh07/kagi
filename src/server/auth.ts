@@ -16,6 +16,8 @@
 import { createClerkClient } from '@clerk/backend'
 import { env } from 'cloudflare:workers'
 
+import { rateLimited } from './rate-limit'
+
 interface ClerkEnv {
   CLERK_SECRET_KEY?: string
   CLERK_PUBLISHABLE_KEY?: string
@@ -71,6 +73,12 @@ function unauthorized(message: string): SyncError {
  * claim the client can influence.
  */
 export async function requireUserId(request: Request): Promise<string> {
+  // Checked before the token is: a flood must not cost a Clerk verification
+  // and a D1 or Polar call per request.
+  if (await rateLimited(request, 'RATE_API')) {
+    throw new SyncError(429, 'Too many requests. Try again in a minute.')
+  }
+
   const clerkEnv = cloudflareEnv<ClerkEnv>()
 
   const secretKey = clerkEnv.CLERK_SECRET_KEY

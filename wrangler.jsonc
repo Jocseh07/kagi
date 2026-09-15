@@ -41,6 +41,23 @@
 			"migrations_dir": "drizzle"
 		}
 	],
+	// Per-IP request budgets, enforced in src/server/rate-limit.ts. The proxies
+	// need no sign-in, so this is what stops a scraper using this deployment as
+	// a free relay. `namespace_id` is any integer unique within your account;
+	// `period` is 10 or 60 seconds. Counters are approximate and per data
+	// centre. Leave the block out and nothing is throttled.
+	"ratelimits": [
+		{
+			"name": "RATE_PROXY",
+			"namespace_id": "1001",
+			"simple": { "limit": 200, "period": 10 }
+		},
+		{
+			"name": "RATE_API",
+			"namespace_id": "1002",
+			"simple": { "limit": 60, "period": 60 }
+		}
+	],
 	// Only the publishable key belongs here; it is public by design and is also
 	// baked into the client bundle. CLERK_SECRET_KEY and CLERK_JWT_KEY are set
 	// with `wrangler secret put` in production and read from `.dev.vars`

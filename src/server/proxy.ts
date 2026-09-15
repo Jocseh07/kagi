@@ -17,6 +17,8 @@
 /** Kept in step with `CHALLENGE_HEADER` in src/lib/transport/types.ts. */
 const CHALLENGE_HEADER = 'x-proxy-challenge'
 
+import { rateLimited } from './rate-limit'
+
 /**
  * The minimum that gets past a challenge. Sent by us rather than forwarded
  * from the browser: requests from the app carry `sec-fetch-*` headers that
@@ -107,6 +109,11 @@ export async function proxyTo(
   request: Request,
   options: ProxyToOptions,
 ): Promise<Response> {
+  // Refused before any parsing: the proxies need no sign-in, so this is the
+  // only thing between a scraper and the upstream sites.
+  const limited = await rateLimited(request, 'RATE_PROXY')
+  if (limited) return limited
+
   // The path carries the prefix and the query string; the suffix is what the
   // upstream site should see.
   const incoming = new URL(request.url)
