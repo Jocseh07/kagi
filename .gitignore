@@ -37,3 +37,8 @@ wrangler.local.jsonc
 
 # Build-time client env; also holds CLERK_SECRET_KEY
 .env
+
+# Local agent instruction files, never committed
+AGENTS.md
+CLAUDE.md
+DESIGN.md
