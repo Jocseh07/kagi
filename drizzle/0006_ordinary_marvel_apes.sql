@@ -1,0 +1,1 @@
+ALTER TABLE `sync_entitlements` ADD `subscription` text;

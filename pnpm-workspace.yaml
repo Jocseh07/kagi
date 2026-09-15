@@ -1,0 +1,7 @@
+allowBuilds:
+  esbuild: true
+  workerd: true
+minimumReleaseAgeExclude:
+  - '@clerk/backend@3.16.12'
+  - '@clerk/react@6.14.7'
+  - '@clerk/shared@4.30.1'

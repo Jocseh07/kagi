@@ -1,0 +1,1 @@
+ALTER TABLE `sync_chapters` ADD `progress_reset_at` integer DEFAULT 0 NOT NULL;

@@ -1,0 +1,393 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+/* Only the tabs sheet. The full `@heroui/styles` sets --background, --muted,
+   --accent and friends on :root and would overwrite the theme picker. */
+@import "@heroui/styles/components/tabs.css" layer(components);
+@import "./fonts.css";
+
+/*
+ * The shell palette. `--bg`, `--surface` and friends predate the theme picker
+ * and are still used across the app as `bg-surface`, `text-fg-muted` and so
+ * on; they are now aliases of the shadcn tokens below, so a theme only has to
+ * define the shadcn set and the shell follows. The values live on :root /
+ * .dark rather than in `@theme`, so that switching the class re-resolves every
+ * utility built from them.
+ */
+@theme {
+  /* The reader's fullscreen letterbox: hardware masking, not a theme surface,
+     so it is fixed at true black like the theme-color the reader sets. */
+  --color-letterbox: oklch(0 0 0);
+  /* How fast the idle reader fades down and back. */
+  --duration-dim: 400ms;
+  /* The settings tabs' pill sliding to the chosen tab. */
+  --duration-segment: 250ms;
+  /* Names HeroUI's tabs sheet expects; values it gets. */
+  --ease-smooth: ease;
+  --ease-out-fluid: cubic-bezier(0.23, 1, 0.32, 1);
+  --cursor-interactive: pointer;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  /* HeroUI tabs bridge: the track and the raised pill, on the app's tokens. */
+  --color-default: var(--muted);
+  --color-segment: var(--card);
+  --color-segment-foreground: var(--card-foreground);
+}
+
+/* Utilities HeroUI's tabs sheet applies, redone on this app's tokens. */
+@utility status-focused {
+  @apply ring-2 ring-ring/50 outline-none;
+}
+@utility status-disabled {
+  @apply pointer-events-none opacity-50;
+}
+@utility no-highlight {
+  -webkit-tap-highlight-color: transparent;
+}
+@utility shadow-surface {
+  @apply shadow-sm;
+}
+
+@layer components {
+  /* HeroUI reads `text-muted` as a text color; here `muted` is a surface. */
+  .tabs__tab {
+    @apply text-muted-foreground;
+  }
+  .tabs__indicator {
+    transition-duration: var(--duration-segment);
+    /* Tailwind also reads `shadow-surface` as a shadow colour, which would
+       paint the pill's shadow in the pill's own colour. Back to the default. */
+    --tw-shadow-color: initial;
+  }
+  /* HeroUI's tab strip scrolls inside a ScrollShadow whose overflow lives in
+     the scroll-shadow sheet, and only the tabs sheet is imported above.
+     Without this the strip cannot scroll and the tabs past the edge of a phone
+     are unreachable. */
+  .tabs__list-container__scroller[data-orientation="horizontal"] {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tabs__list-container__scroller::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+html, body, #root { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  letter-spacing: var(--tracking-normal, normal);
+  -webkit-font-smoothing: antialiased;
+}
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/*
+ * The default theme: shadcn's `neutral` scaffold, verbatim.
+ *
+ * This block is what paints before any JavaScript runs. Choosing a theme in
+ * Settings injects a <style id="app-theme"> whose `html:root` selectors outrank
+ * these by specificity rather than by source order, and choosing Default again
+ * empties that element and hands the app straight back here. The same values
+ * are in lib/theme/default-preset.ts — keep the two in step.
+ *
+ * The shell aliases at the end are var() indirections, so they re-resolve to
+ * whichever theme is in force without a theme needing to know they exist.
+ */
+:root {
+  color-scheme: light;
+
+  --font-sans: 'Inter', sans-serif;
+  --font-serif: 'Source Serif 4', serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --radius: 0.625rem;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+
+  --bg: var(--background);
+  --surface: var(--card);
+  --surface-2: var(--muted);
+  --fg: var(--foreground);
+  --fg-muted: var(--muted-foreground);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+/*
+ * One page rhythm. The gutter, the vertical padding and the space between
+ * page-level blocks all step together at md and lg, so the header cannot drift
+ * out of sync with the page under it. Change the scale here, once.
+ */
+@layer utilities {
+  .page-width {
+    @apply mx-auto w-full max-w-[1600px];
+  }
+
+  .p-page {
+    @apply p-2 md:p-3 lg:p-4;
+  }
+  .px-page {
+    @apply px-2 md:px-3 lg:px-4;
+  }
+  .py-page {
+    @apply py-2 md:py-3 lg:py-4;
+  }
+  .gap-page {
+    @apply gap-2 md:gap-3 lg:gap-4;
+  }
+  .gap-x-page {
+    @apply gap-x-2 md:gap-x-3 lg:gap-x-4;
+  }
+  .gap-y-page {
+    @apply gap-y-2 md:gap-y-3 lg:gap-y-4;
+  }
+
+  /* Runs a scrolling row out to the window edge on small screens, then aligns
+     with the page from md up. */
+  .bleed-page {
+    @apply -mx-2 px-2 md:mx-0 md:px-0;
+  }
+
+  /* The fullscreen reader's top and bottom bands: a fixed strip plus whatever
+     the platform reserves for its own indicators on that edge. */
+  .reader-letterbox-top {
+    height: calc(env(safe-area-inset-top) + --spacing(6));
+  }
+  .reader-letterbox-bottom {
+    height: calc(env(safe-area-inset-bottom) + --spacing(6));
+  }
+}
+
+/* Novel chapter prose.
+   Element selectors rather than utility classes: the markup comes from a
+   source's chapter body and is sanitised, not authored here, so there is
+   nowhere to hang a class. Font size, line height, measure and alignment are
+   set inline from the reader's own settings and deliberately not repeated. */
+.reader-prose p {
+  margin-block: 0 1em;
+}
+.reader-prose p:last-child {
+  margin-bottom: 0;
+}
+.reader-prose h1,
+.reader-prose h2,
+.reader-prose h3,
+.reader-prose h4,
+.reader-prose h5,
+.reader-prose h6 {
+  margin-block: 1.6em 0.6em;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.reader-prose h1 {
+  font-size: 1.5em;
+}
+.reader-prose h2 {
+  font-size: 1.3em;
+}
+.reader-prose h3 {
+  font-size: 1.15em;
+}
+.reader-prose blockquote {
+  margin-block: 1em;
+  padding-inline-start: 1em;
+  border-inline-start: 2px solid var(--border);
+  opacity: 0.85;
+  font-style: italic;
+}
+.reader-prose hr {
+  margin-block: 2em;
+  border: 0;
+  border-top: 1px solid var(--border);
+  opacity: 0.5;
+}
+.reader-prose ul,
+.reader-prose ol {
+  margin-block: 1em;
+  padding-inline-start: 1.5em;
+  list-style-position: outside;
+}
+.reader-prose ul {
+  list-style-type: disc;
+}
+.reader-prose ol {
+  list-style-type: decimal;
+}
+.reader-prose li {
+  margin-block: 0.3em;
+}
+.reader-prose em,
+.reader-prose i {
+  font-style: italic;
+}
+.reader-prose strong,
+.reader-prose b {
+  font-weight: 600;
+}
+.reader-prose a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* Chapter illustrations: contained rather than cropped, and never wider than
+   the measure even when the source declares pixel dimensions. */
+.reader-prose img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-block: 1.5em;
+  margin-inline: auto;
+}
+.reader-prose pre {
+  margin-block: 1em;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+/* The wordmark. Named rather than `font-mono` on purpose: most tweakcn presets
+   repoint --font-mono, and the name is part of the app rather than part of the
+   theme, so it stays JetBrains Mono whatever is picked. */
+.font-brand {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+
+  /* Tailwind v4's preflight leaves buttons on the UA default arrow, which
+     makes nothing on screen read as pressable. Anything actionable and
+     enabled gets the hand; disabled controls keep the arrow so "off" still
+     reads as off. Cursor utilities sit in a later layer, so per-element
+     overrides (the reader's page-turn edges, menu items) still win. */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  input:where(
+      [type='button'],
+      [type='reset'],
+      [type='submit'],
+      [type='checkbox'],
+      [type='radio'],
+      [type='file']
+    ):not(:disabled),
+  select:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
+}

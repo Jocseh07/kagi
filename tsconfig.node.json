@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023"],
+    // Deliberately *not* including `@cloudflare/workers-types` globally: it
+    // redefines `setTimeout` and friends to workerd's signatures, which breaks
+    // the Node build scripts compiled by this same project. `D1Database` is
+    // imported as a type where it is needed instead.
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "module": "nodenext",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+
+    /* Kept for the standalone scripts, which import from src. Written the
+       same way as tsconfig.app.json: paths relative to this file, with no
+       `baseUrl`, which TypeScript 6 deprecates. */
+    "paths": { "@/*": ["./src/*"] }
+  },
+  /* The sync routes and the source proxies live under src/ now and are
+     compiled by tsconfig.app.json along with the app they share their schema
+     and wire format with. What is left here is the two config files that
+     genuinely run in Node. The smoke scripts under scripts/ are deliberately
+     absent, as they always have been: they import browser-targeted source
+     modules and have never been part of this project. */
+  "include": [
+    "vite.config.ts",
+    "drizzle.config.ts"
+  ]
+}

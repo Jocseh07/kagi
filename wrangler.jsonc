@@ -1,0 +1,60 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	// This file is a template. Copy it to `wrangler.local.jsonc` (gitignored),
+	// fill in your own domain, D1 id, Clerk and Polar values, and `pnpm dev`
+	// and `pnpm deploy` will use that copy automatically. See README "Deploy
+	// your own".
+	"name": "kagi",
+	// TanStack Start's own Worker entry. It serves the SPA shell, the source
+	// proxy routes and the sync API from one script — the Nitro build that
+	// used to sit in front of this is gone.
+	"main": "@tanstack/react-start/server-entry",
+	"compatibility_date": "2026-08-25",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	// The hostname is bound to this script name. Renaming `name` above creates a
+	// different Worker and silently leaves the domain on the old one, so the two
+	// must be changed together.
+	"routes": [
+		{
+			"pattern": "kagi.example.com",
+			"custom_domain": true
+		}
+	],
+	// Off, so the app has exactly one origin. CLERK_AUTHORIZED_PARTIES names
+	// that origin alone, so a second workers.dev copy could not sign in anyway.
+	"workers_dev": false,
+	"assets": {
+		// Written by `vite build`. Start owns routing and its SPA fallback, so
+		// there is no `not_found_handling` or `run_worker_first` here: a request
+		// that misses a static asset goes to the Worker, which answers with the
+		// prerendered shell.
+		"directory": "dist/client",
+		"binding": "ASSETS"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "kagi-sync",
+			"database_id": "<your-d1-database-id>",
+			"migrations_dir": "drizzle"
+		}
+	],
+	// Only the publishable key belongs here; it is public by design and is also
+	// baked into the client bundle. CLERK_SECRET_KEY and CLERK_JWT_KEY are set
+	// with `wrangler secret put` in production and read from `.dev.vars`
+	// locally, and must never appear in this file.
+	"vars": {
+		"CLERK_PUBLISHABLE_KEY": "pk_test_...",
+		"CLERK_AUTHORIZED_PARTIES": "https://kagi.example.com",
+		// Polar: the Sync plan's product id and which Polar environment to talk
+		// to. POLAR_ACCESS_TOKEN and POLAR_WEBHOOK_SECRET are secrets, set the
+		// same way as the Clerk ones above.
+		"POLAR_PRODUCT_ID": "<your-polar-product-id>",
+		"POLAR_SERVER": "production",
+		// Your public origin, sent as the MangaDex User-Agent contact so they can
+		// reach the operator of this deployment.
+		"APP_ORIGIN": "https://kagi.example.com"
+	}
+}
