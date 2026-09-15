@@ -154,8 +154,11 @@ Your `wrangler.local.jsonc`, `.env` and `.dev.vars` are untouched by a pull.
   terms require. Set it to something that reaches you.
 - D1's free plan allows 100,000 row writes per day; see the README's
   "Free-tier limits" for why that is comfortable.
-- Requests are budgeted per IP through the two `ratelimits` bindings in
-  `wrangler.local.jsonc`: `RATE_PROXY` for the source proxies (200 per 10
-  seconds) and `RATE_API` for the sync and billing routes (60 per minute).
-  Over budget answers 429. Tune the numbers there; remove the block and
-  nothing is throttled.
+- Requests are budgeted through the `ratelimits` bindings in
+  `wrangler.local.jsonc`. The source proxies are tiered by who is asking,
+  read from the Clerk session cookie: `RATE_PROXY` per address for anonymous
+  callers (200 per 10 seconds), `RATE_PROXY_USER` per account for signed-in
+  readers (300), and `RATE_PROXY_PAID` per account for Sync plan subscribers
+  (600). `RATE_API` covers the sync and billing routes per address (60 per
+  minute), before auth. Over budget answers 429. Tune the numbers there;
+  leave a binding out and that tier is not throttled.

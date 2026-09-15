@@ -119,7 +119,9 @@ async function fetchPageBlob(
   let response: Response
   try {
     response = await fetch(url, {
-      credentials: 'omit',
+      // Same-origin only, as the reader's <img> sends: the proxies read the
+      // session cookie to pick a rate limit tier.
+      credentials: 'same-origin',
       referrerPolicy: 'no-referrer',
       signal,
     })

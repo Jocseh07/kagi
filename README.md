@@ -157,8 +157,9 @@ Then fill in `wrangler.local.jsonc` under `routes` and `vars`:
   hole.
 - `POLAR_PRODUCT_ID` and `POLAR_SERVER` — the Sync plan's product
 - `APP_ORIGIN` — your public origin, sent to MangaDex as the User-Agent contact
-- `ratelimits` — per-IP budgets for the source proxies and the sync API. The
-  template's numbers are the defaults; see [docs/deploy.md](docs/deploy.md).
+- `ratelimits` — request budgets for the source proxies, tiered for anonymous,
+  signed-in and subscribed readers, and for the sync API. The template's
+  numbers are the defaults; see [docs/deploy.md](docs/deploy.md).
 
 And for the client bundle, in `.env`:
 

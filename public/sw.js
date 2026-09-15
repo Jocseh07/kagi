@@ -410,11 +410,12 @@ async function cachePages(urls, port, minIntervalMs, token) {
     await takeTurn(url, minIntervalMs)
     if (cancelled()) return { url, ok: false, error: 'cancelled', bytes: null }
     try {
-      // `no-referrer` mirrors what the reader's <img> sends, so the CDN sees
-      // the same request shape it already serves.
+      // `no-referrer` and `same-origin` mirror what the reader's <img> sends,
+      // so the CDN sees the request shape it already serves and the proxies
+      // see the session cookie they tier on.
       const response = await fetch(url, {
         mode: 'no-cors',
-        credentials: 'omit',
+        credentials: 'same-origin',
         referrerPolicy: 'no-referrer',
       })
 

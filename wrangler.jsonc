@@ -41,16 +41,30 @@
 			"migrations_dir": "drizzle"
 		}
 	],
-	// Per-IP request budgets, enforced in src/server/rate-limit.ts. The proxies
-	// need no sign-in, so this is what stops a scraper using this deployment as
-	// a free relay. `namespace_id` is any integer unique within your account;
-	// `period` is 10 or 60 seconds. Counters are approximate and per data
-	// centre. Leave the block out and nothing is throttled.
+	// Request budgets, enforced in src/server/rate-limit.ts. The proxies need
+	// no sign-in, so this is what stops a scraper using this deployment as a
+	// free relay. They are tiered: RATE_PROXY per address for anonymous
+	// callers, RATE_PROXY_USER per account for signed-in readers, and
+	// RATE_PROXY_PAID per account for Sync plan subscribers. RATE_API is per
+	// address and checked before auth. `namespace_id` is any integer unique
+	// within your account; `period` is 10 or 60 seconds. Counters are
+	// approximate and per data centre. Leave a binding out and that tier is
+	// not throttled.
 	"ratelimits": [
 		{
 			"name": "RATE_PROXY",
 			"namespace_id": "1001",
 			"simple": { "limit": 200, "period": 10 }
+		},
+		{
+			"name": "RATE_PROXY_USER",
+			"namespace_id": "1003",
+			"simple": { "limit": 300, "period": 10 }
+		},
+		{
+			"name": "RATE_PROXY_PAID",
+			"namespace_id": "1004",
+			"simple": { "limit": 600, "period": 10 }
 		},
 		{
 			"name": "RATE_API",

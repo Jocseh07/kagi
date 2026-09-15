@@ -173,13 +173,14 @@ async function start(
   manager: BackgroundFetchManager,
   options: BackgroundFetchOptions,
 ): Promise<BackgroundFetchRegistration> {
-  // `no-referrer` and `omit` mirror what the reader's <img> sends, exactly as
-  // the CACHE_PAGES path does, so the CDN sees the request shape it serves.
+  // `no-referrer` and `same-origin` mirror what the reader's <img> sends,
+  // exactly as the CACHE_PAGES path does, so the CDN sees the request shape it
+  // serves and the proxies see the session cookie they tier on.
   const requests = options.urls.map(
     (url) =>
       new Request(url, {
         mode: 'no-cors',
-        credentials: 'omit',
+        credentials: 'same-origin',
         referrerPolicy: 'no-referrer',
       }),
   )

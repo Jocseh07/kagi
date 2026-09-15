@@ -71,7 +71,9 @@ export class DirectFetchTransport implements HttpTransport {
         method: req.method ?? 'GET',
         headers: req.headers,
         body: req.body,
-        credentials: 'omit',
+        // Same-origin only: the proxies read the session cookie to pick a
+        // rate limit tier, and a cross-origin source still gets nothing.
+        credentials: 'same-origin',
         redirect: 'follow',
         signal: req.signal,
       })

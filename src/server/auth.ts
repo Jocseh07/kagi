@@ -66,19 +66,17 @@ function unauthorized(message: string): SyncError {
 }
 
 /**
- * The signed-in user's id, or a 401.
+ * The signed-in user's id, or null when the request carries no valid session.
  *
- * Returns only the id. Callers scope every query by it, and handing back the
- * whole claims object invites reading a tenancy decision out of some other
- * claim the client can influence.
+ * Reads the bearer token the sync client sends and the `__session` cookie the
+ * browser sends to same-origin routes on its own, so the proxies can tell a
+ * signed-in reader from an anonymous one without any client changes beyond
+ * sending cookies. A missing Clerk config is a 500 here because every caller
+ * that reaches this far needs Clerk to exist; the proxies check that first.
  */
-export async function requireUserId(request: Request): Promise<string> {
-  // Checked before the token is: a flood must not cost a Clerk verification
-  // and a D1 or Polar call per request.
-  if (await rateLimited(request, 'RATE_API')) {
-    throw new SyncError(429, 'Too many requests. Try again in a minute.')
-  }
-
+export async function authenticatedUserId(
+  request: Request,
+): Promise<string | null> {
   const clerkEnv = cloudflareEnv<ClerkEnv>()
 
   const secretKey = clerkEnv.CLERK_SECRET_KEY
@@ -105,7 +103,7 @@ export async function requireUserId(request: Request): Promise<string> {
     authorizedParties: parties,
   })
 
-  if (!state.isAuthenticated) throw unauthorized('Not signed in.')
+  if (!state.isAuthenticated) return null
 
   const auth = state.toAuth()
 
@@ -114,7 +112,31 @@ export async function requireUserId(request: Request): Promise<string> {
   // anything that is not a signed-in user session is refused rather than being
   // given an empty tenancy key.
   const userId = auth && 'userId' in auth ? auth.userId : undefined
-  if (!userId) throw unauthorized('Session carries no user.')
+  return userId || null
+}
+
+/** Whether Clerk is configured at all, for callers that degrade without it. */
+export function clerkConfigured(): boolean {
+  const clerkEnv = cloudflareEnv<ClerkEnv>()
+  return Boolean(clerkEnv.CLERK_SECRET_KEY && clerkEnv.CLERK_PUBLISHABLE_KEY)
+}
+
+/**
+ * The signed-in user's id, or a 401.
+ *
+ * Returns only the id. Callers scope every query by it, and handing back the
+ * whole claims object invites reading a tenancy decision out of some other
+ * claim the client can influence.
+ */
+export async function requireUserId(request: Request): Promise<string> {
+  // Checked before the token is: a flood must not cost a Clerk verification
+  // and a D1 or Polar call per request.
+  if (await rateLimited(request, 'RATE_API')) {
+    throw new SyncError(429, 'Too many requests. Try again in a minute.')
+  }
+
+  const userId = await authenticatedUserId(request)
+  if (!userId) throw unauthorized('Not signed in.')
 
   // Whether this user has *paid* for sync is a separate question, answered by
   // server/polar.ts against D1. Tenancy is the verified user id and nothing
