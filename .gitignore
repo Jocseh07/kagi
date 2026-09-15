@@ -37,7 +37,3 @@ wrangler.local.jsonc
 
 # Build-time client env; also holds CLERK_SECRET_KEY
 .env
-
-# Local agent design contract
-DESIGN.md
-CLAUDE.md
