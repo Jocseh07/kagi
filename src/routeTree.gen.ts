@@ -11,16 +11,23 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as WelcomeRouteImport } from './routes/welcome'
+import { Route as AdaptIndexRouteImport } from './routes/adapt/index'
+import { Route as AdaptAdaptationIdRouteImport } from './routes/adapt/$adaptationId'
+import { Route as ApiAppUpdateRouteImport } from './routes/api.app-update'
+import { Route as ApiAppUpdatesRouteImport } from './routes/api.app-updates'
 import { Route as AsuracdnSplatRouteImport } from './routes/asuracdn.$'
 import { Route as AsurascansSplatRouteImport } from './routes/asurascans.$'
 import { Route as BrowseIndexRouteImport } from './routes/browse/index'
 import { Route as BrowseSourceIdRouteImport } from './routes/browse/$sourceId'
 import { Route as ComickSplatRouteImport } from './routes/comick.$'
 import { Route as ComickcdnSplatRouteImport } from './routes/comickcdn.$'
+import { Route as DownloadAndroidRouteImport } from './routes/download/android'
 import { Route as DownloadsIndexRouteImport } from './routes/downloads/index'
 import { Route as FenrirealmSplatRouteImport } from './routes/fenrirealm.$'
 import { Route as FlamecdnSplatRouteImport } from './routes/flamecdn.$'
 import { Route as FlamecomicsSplatRouteImport } from './routes/flamecomics.$'
+import { Route as GenerationsIndexRouteImport } from './routes/generations/index'
+import { Route as GenerationsGenerationIdRouteImport } from './routes/generations/$generationId'
 import { Route as HistoryIndexRouteImport } from './routes/history/index'
 import { Route as KatanacdnSplatRouteImport } from './routes/katanacdn.$'
 import { Route as LibraryIndexRouteImport } from './routes/library/index'
@@ -35,6 +42,7 @@ import { Route as MdcoversSplatRouteImport } from './routes/mdcovers.$'
 import { Route as MdimageSplatRouteImport } from './routes/mdimage.$'
 import { Route as NovelfullSplatRouteImport } from './routes/novelfull.$'
 import { Route as NovelmtlSplatRouteImport } from './routes/novelmtl.$'
+import { Route as NovelpingSplatRouteImport } from './routes/novelping.$'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as ThunderscansSplatRouteImport } from './routes/thunderscans.$'
 import { Route as ToonilySplatRouteImport } from './routes/toonily.$'
@@ -45,6 +53,7 @@ import { Route as WebtoonsSplatRouteImport } from './routes/webtoons.$'
 import { Route as WebtoonscdnSplatRouteImport } from './routes/webtoonscdn.$'
 import { Route as WeebcdnSplatRouteImport } from './routes/weebcdn.$'
 import { Route as WeebcentralSplatRouteImport } from './routes/weebcentral.$'
+import { Route as ApiAppReleaseRouteImport } from './routes/api/app/release'
 import { Route as ApiBillingCheckoutRouteImport } from './routes/api/billing/checkout'
 import { Route as ApiBillingPlanRouteImport } from './routes/api/billing/plan'
 import { Route as ApiBillingPortalRouteImport } from './routes/api/billing/portal'
@@ -53,6 +62,9 @@ import { Route as ApiPolarWebhookRouteImport } from './routes/api/polar/webhook'
 import { Route as ApiSyncPullRouteImport } from './routes/api/sync/pull'
 import { Route as ApiSyncPushRouteImport } from './routes/api/sync/push'
 import { Route as MangaSourceIdSlugRouteImport } from './routes/manga/$sourceId.$slug'
+import { Route as MigrateSourceIdSlugRouteImport } from './routes/migrate/$sourceId.$slug'
+import { Route as AdaptStartSourceIdSlugRouteImport } from './routes/adapt/start.$sourceId.$slug'
+import { Route as DownloadReleasesReleaseIdSplatRouteImport } from './routes/download.releases.$releaseId.$'
 import { Route as ReaderSourceIdSlugChapterRouteImport } from './routes/reader/$sourceId.$slug.$chapter'
 
 const IndexRoute = IndexRouteImport.update({
@@ -63,6 +75,26 @@ const IndexRoute = IndexRouteImport.update({
 const WelcomeRoute = WelcomeRouteImport.update({
   id: '/welcome',
   path: '/welcome',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdaptIndexRoute = AdaptIndexRouteImport.update({
+  id: '/adapt/',
+  path: '/adapt/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdaptAdaptationIdRoute = AdaptAdaptationIdRouteImport.update({
+  id: '/adapt/$adaptationId',
+  path: '/adapt/$adaptationId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAppUpdateRoute = ApiAppUpdateRouteImport.update({
+  id: '/api/app-update',
+  path: '/api/app-update',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAppUpdatesRoute = ApiAppUpdatesRouteImport.update({
+  id: '/api/app-updates',
+  path: '/api/app-updates',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AsuracdnSplatRoute = AsuracdnSplatRouteImport.update({
@@ -95,6 +127,11 @@ const ComickcdnSplatRoute = ComickcdnSplatRouteImport.update({
   path: '/comickcdn/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DownloadAndroidRoute = DownloadAndroidRouteImport.update({
+  id: '/download/android',
+  path: '/download/android',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DownloadsIndexRoute = DownloadsIndexRouteImport.update({
   id: '/downloads/',
   path: '/downloads/',
@@ -113,6 +150,16 @@ const FlamecdnSplatRoute = FlamecdnSplatRouteImport.update({
 const FlamecomicsSplatRoute = FlamecomicsSplatRouteImport.update({
   id: '/flamecomics/$',
   path: '/flamecomics/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GenerationsIndexRoute = GenerationsIndexRouteImport.update({
+  id: '/generations/',
+  path: '/generations/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GenerationsGenerationIdRoute = GenerationsGenerationIdRouteImport.update({
+  id: '/generations/$generationId',
+  path: '/generations/$generationId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HistoryIndexRoute = HistoryIndexRouteImport.update({
@@ -185,6 +232,11 @@ const NovelmtlSplatRoute = NovelmtlSplatRouteImport.update({
   path: '/novelmtl/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NovelpingSplatRoute = NovelpingSplatRouteImport.update({
+  id: '/novelping/$',
+  path: '/novelping/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
   id: '/settings/',
   path: '/settings/',
@@ -235,6 +287,11 @@ const WeebcentralSplatRoute = WeebcentralSplatRouteImport.update({
   path: '/weebcentral/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAppReleaseRoute = ApiAppReleaseRouteImport.update({
+  id: '/api/app/release',
+  path: '/api/app/release',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiBillingCheckoutRoute = ApiBillingCheckoutRouteImport.update({
   id: '/api/billing/checkout',
   path: '/api/billing/checkout',
@@ -275,6 +332,22 @@ const MangaSourceIdSlugRoute = MangaSourceIdSlugRouteImport.update({
   path: '/manga/$sourceId/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MigrateSourceIdSlugRoute = MigrateSourceIdSlugRouteImport.update({
+  id: '/migrate/$sourceId/$slug',
+  path: '/migrate/$sourceId/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdaptStartSourceIdSlugRoute = AdaptStartSourceIdSlugRouteImport.update({
+  id: '/adapt/start/$sourceId/$slug',
+  path: '/adapt/start/$sourceId/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DownloadReleasesReleaseIdSplatRoute =
+  DownloadReleasesReleaseIdSplatRouteImport.update({
+    id: '/download/releases/$releaseId/$',
+    path: '/download/releases/$releaseId/$',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ReaderSourceIdSlugChapterRoute =
   ReaderSourceIdSlugChapterRouteImport.update({
     id: '/reader/$sourceId/$slug/$chapter',
@@ -285,14 +358,19 @@ const ReaderSourceIdSlugChapterRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/welcome': typeof WelcomeRoute
+  '/adapt/$adaptationId': typeof AdaptAdaptationIdRoute
+  '/api/app-update': typeof ApiAppUpdateRoute
+  '/api/app-updates': typeof ApiAppUpdatesRoute
   '/asuracdn/$': typeof AsuracdnSplatRoute
   '/asurascans/$': typeof AsurascansSplatRoute
   '/browse/$sourceId': typeof BrowseSourceIdRoute
   '/comick/$': typeof ComickSplatRoute
   '/comickcdn/$': typeof ComickcdnSplatRoute
+  '/download/android': typeof DownloadAndroidRoute
   '/fenrirealm/$': typeof FenrirealmSplatRoute
   '/flamecdn/$': typeof FlamecdnSplatRoute
   '/flamecomics/$': typeof FlamecomicsSplatRoute
+  '/generations/$generationId': typeof GenerationsGenerationIdRoute
   '/katanacdn/$': typeof KatanacdnSplatRoute
   '/library/categories': typeof LibraryCategoriesRoute
   '/mangadex/$': typeof MangadexSplatRoute
@@ -305,6 +383,7 @@ export interface FileRoutesByFullPath {
   '/mdimage/$': typeof MdimageSplatRoute
   '/novelfull/$': typeof NovelfullSplatRoute
   '/novelmtl/$': typeof NovelmtlSplatRoute
+  '/novelping/$': typeof NovelpingSplatRoute
   '/thunderscans/$': typeof ThunderscansSplatRoute
   '/toonily/$': typeof ToonilySplatRoute
   '/toonilycdn/$': typeof ToonilycdnSplatRoute
@@ -313,12 +392,15 @@ export interface FileRoutesByFullPath {
   '/webtoonscdn/$': typeof WebtoonscdnSplatRoute
   '/weebcdn/$': typeof WeebcdnSplatRoute
   '/weebcentral/$': typeof WeebcentralSplatRoute
+  '/adapt/': typeof AdaptIndexRoute
   '/browse/': typeof BrowseIndexRoute
   '/downloads/': typeof DownloadsIndexRoute
+  '/generations/': typeof GenerationsIndexRoute
   '/history/': typeof HistoryIndexRoute
   '/library/': typeof LibraryIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/updates/': typeof UpdatesIndexRoute
+  '/api/app/release': typeof ApiAppReleaseRoute
   '/api/billing/checkout': typeof ApiBillingCheckoutRoute
   '/api/billing/plan': typeof ApiBillingPlanRoute
   '/api/billing/portal': typeof ApiBillingPortalRoute
@@ -327,19 +409,27 @@ export interface FileRoutesByFullPath {
   '/api/sync/pull': typeof ApiSyncPullRoute
   '/api/sync/push': typeof ApiSyncPushRoute
   '/manga/$sourceId/$slug': typeof MangaSourceIdSlugRoute
+  '/migrate/$sourceId/$slug': typeof MigrateSourceIdSlugRoute
+  '/adapt/start/$sourceId/$slug': typeof AdaptStartSourceIdSlugRoute
+  '/download/releases/$releaseId/$': typeof DownloadReleasesReleaseIdSplatRoute
   '/reader/$sourceId/$slug/$chapter': typeof ReaderSourceIdSlugChapterRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/welcome': typeof WelcomeRoute
+  '/adapt/$adaptationId': typeof AdaptAdaptationIdRoute
+  '/api/app-update': typeof ApiAppUpdateRoute
+  '/api/app-updates': typeof ApiAppUpdatesRoute
   '/asuracdn/$': typeof AsuracdnSplatRoute
   '/asurascans/$': typeof AsurascansSplatRoute
   '/browse/$sourceId': typeof BrowseSourceIdRoute
   '/comick/$': typeof ComickSplatRoute
   '/comickcdn/$': typeof ComickcdnSplatRoute
+  '/download/android': typeof DownloadAndroidRoute
   '/fenrirealm/$': typeof FenrirealmSplatRoute
   '/flamecdn/$': typeof FlamecdnSplatRoute
   '/flamecomics/$': typeof FlamecomicsSplatRoute
+  '/generations/$generationId': typeof GenerationsGenerationIdRoute
   '/katanacdn/$': typeof KatanacdnSplatRoute
   '/library/categories': typeof LibraryCategoriesRoute
   '/mangadex/$': typeof MangadexSplatRoute
@@ -352,6 +442,7 @@ export interface FileRoutesByTo {
   '/mdimage/$': typeof MdimageSplatRoute
   '/novelfull/$': typeof NovelfullSplatRoute
   '/novelmtl/$': typeof NovelmtlSplatRoute
+  '/novelping/$': typeof NovelpingSplatRoute
   '/thunderscans/$': typeof ThunderscansSplatRoute
   '/toonily/$': typeof ToonilySplatRoute
   '/toonilycdn/$': typeof ToonilycdnSplatRoute
@@ -360,12 +451,15 @@ export interface FileRoutesByTo {
   '/webtoonscdn/$': typeof WebtoonscdnSplatRoute
   '/weebcdn/$': typeof WeebcdnSplatRoute
   '/weebcentral/$': typeof WeebcentralSplatRoute
+  '/adapt': typeof AdaptIndexRoute
   '/browse': typeof BrowseIndexRoute
   '/downloads': typeof DownloadsIndexRoute
+  '/generations': typeof GenerationsIndexRoute
   '/history': typeof HistoryIndexRoute
   '/library': typeof LibraryIndexRoute
   '/settings': typeof SettingsIndexRoute
   '/updates': typeof UpdatesIndexRoute
+  '/api/app/release': typeof ApiAppReleaseRoute
   '/api/billing/checkout': typeof ApiBillingCheckoutRoute
   '/api/billing/plan': typeof ApiBillingPlanRoute
   '/api/billing/portal': typeof ApiBillingPortalRoute
@@ -374,20 +468,28 @@ export interface FileRoutesByTo {
   '/api/sync/pull': typeof ApiSyncPullRoute
   '/api/sync/push': typeof ApiSyncPushRoute
   '/manga/$sourceId/$slug': typeof MangaSourceIdSlugRoute
+  '/migrate/$sourceId/$slug': typeof MigrateSourceIdSlugRoute
+  '/adapt/start/$sourceId/$slug': typeof AdaptStartSourceIdSlugRoute
+  '/download/releases/$releaseId/$': typeof DownloadReleasesReleaseIdSplatRoute
   '/reader/$sourceId/$slug/$chapter': typeof ReaderSourceIdSlugChapterRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/welcome': typeof WelcomeRoute
+  '/adapt/$adaptationId': typeof AdaptAdaptationIdRoute
+  '/api/app-update': typeof ApiAppUpdateRoute
+  '/api/app-updates': typeof ApiAppUpdatesRoute
   '/asuracdn/$': typeof AsuracdnSplatRoute
   '/asurascans/$': typeof AsurascansSplatRoute
   '/browse/$sourceId': typeof BrowseSourceIdRoute
   '/comick/$': typeof ComickSplatRoute
   '/comickcdn/$': typeof ComickcdnSplatRoute
+  '/download/android': typeof DownloadAndroidRoute
   '/fenrirealm/$': typeof FenrirealmSplatRoute
   '/flamecdn/$': typeof FlamecdnSplatRoute
   '/flamecomics/$': typeof FlamecomicsSplatRoute
+  '/generations/$generationId': typeof GenerationsGenerationIdRoute
   '/katanacdn/$': typeof KatanacdnSplatRoute
   '/library/categories': typeof LibraryCategoriesRoute
   '/mangadex/$': typeof MangadexSplatRoute
@@ -400,6 +502,7 @@ export interface FileRoutesById {
   '/mdimage/$': typeof MdimageSplatRoute
   '/novelfull/$': typeof NovelfullSplatRoute
   '/novelmtl/$': typeof NovelmtlSplatRoute
+  '/novelping/$': typeof NovelpingSplatRoute
   '/thunderscans/$': typeof ThunderscansSplatRoute
   '/toonily/$': typeof ToonilySplatRoute
   '/toonilycdn/$': typeof ToonilycdnSplatRoute
@@ -408,12 +511,15 @@ export interface FileRoutesById {
   '/webtoonscdn/$': typeof WebtoonscdnSplatRoute
   '/weebcdn/$': typeof WeebcdnSplatRoute
   '/weebcentral/$': typeof WeebcentralSplatRoute
+  '/adapt/': typeof AdaptIndexRoute
   '/browse/': typeof BrowseIndexRoute
   '/downloads/': typeof DownloadsIndexRoute
+  '/generations/': typeof GenerationsIndexRoute
   '/history/': typeof HistoryIndexRoute
   '/library/': typeof LibraryIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/updates/': typeof UpdatesIndexRoute
+  '/api/app/release': typeof ApiAppReleaseRoute
   '/api/billing/checkout': typeof ApiBillingCheckoutRoute
   '/api/billing/plan': typeof ApiBillingPlanRoute
   '/api/billing/portal': typeof ApiBillingPortalRoute
@@ -422,6 +528,9 @@ export interface FileRoutesById {
   '/api/sync/pull': typeof ApiSyncPullRoute
   '/api/sync/push': typeof ApiSyncPushRoute
   '/manga/$sourceId/$slug': typeof MangaSourceIdSlugRoute
+  '/migrate/$sourceId/$slug': typeof MigrateSourceIdSlugRoute
+  '/adapt/start/$sourceId/$slug': typeof AdaptStartSourceIdSlugRoute
+  '/download/releases/$releaseId/$': typeof DownloadReleasesReleaseIdSplatRoute
   '/reader/$sourceId/$slug/$chapter': typeof ReaderSourceIdSlugChapterRoute
 }
 export interface FileRouteTypes {
@@ -429,14 +538,19 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/welcome'
+    | '/adapt/$adaptationId'
+    | '/api/app-update'
+    | '/api/app-updates'
     | '/asuracdn/$'
     | '/asurascans/$'
     | '/browse/$sourceId'
     | '/comick/$'
     | '/comickcdn/$'
+    | '/download/android'
     | '/fenrirealm/$'
     | '/flamecdn/$'
     | '/flamecomics/$'
+    | '/generations/$generationId'
     | '/katanacdn/$'
     | '/library/categories'
     | '/mangadex/$'
@@ -449,6 +563,7 @@ export interface FileRouteTypes {
     | '/mdimage/$'
     | '/novelfull/$'
     | '/novelmtl/$'
+    | '/novelping/$'
     | '/thunderscans/$'
     | '/toonily/$'
     | '/toonilycdn/$'
@@ -457,12 +572,15 @@ export interface FileRouteTypes {
     | '/webtoonscdn/$'
     | '/weebcdn/$'
     | '/weebcentral/$'
+    | '/adapt/'
     | '/browse/'
     | '/downloads/'
+    | '/generations/'
     | '/history/'
     | '/library/'
     | '/settings/'
     | '/updates/'
+    | '/api/app/release'
     | '/api/billing/checkout'
     | '/api/billing/plan'
     | '/api/billing/portal'
@@ -471,19 +589,27 @@ export interface FileRouteTypes {
     | '/api/sync/pull'
     | '/api/sync/push'
     | '/manga/$sourceId/$slug'
+    | '/migrate/$sourceId/$slug'
+    | '/adapt/start/$sourceId/$slug'
+    | '/download/releases/$releaseId/$'
     | '/reader/$sourceId/$slug/$chapter'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/welcome'
+    | '/adapt/$adaptationId'
+    | '/api/app-update'
+    | '/api/app-updates'
     | '/asuracdn/$'
     | '/asurascans/$'
     | '/browse/$sourceId'
     | '/comick/$'
     | '/comickcdn/$'
+    | '/download/android'
     | '/fenrirealm/$'
     | '/flamecdn/$'
     | '/flamecomics/$'
+    | '/generations/$generationId'
     | '/katanacdn/$'
     | '/library/categories'
     | '/mangadex/$'
@@ -496,6 +622,7 @@ export interface FileRouteTypes {
     | '/mdimage/$'
     | '/novelfull/$'
     | '/novelmtl/$'
+    | '/novelping/$'
     | '/thunderscans/$'
     | '/toonily/$'
     | '/toonilycdn/$'
@@ -504,12 +631,15 @@ export interface FileRouteTypes {
     | '/webtoonscdn/$'
     | '/weebcdn/$'
     | '/weebcentral/$'
+    | '/adapt'
     | '/browse'
     | '/downloads'
+    | '/generations'
     | '/history'
     | '/library'
     | '/settings'
     | '/updates'
+    | '/api/app/release'
     | '/api/billing/checkout'
     | '/api/billing/plan'
     | '/api/billing/portal'
@@ -518,19 +648,27 @@ export interface FileRouteTypes {
     | '/api/sync/pull'
     | '/api/sync/push'
     | '/manga/$sourceId/$slug'
+    | '/migrate/$sourceId/$slug'
+    | '/adapt/start/$sourceId/$slug'
+    | '/download/releases/$releaseId/$'
     | '/reader/$sourceId/$slug/$chapter'
   id:
     | '__root__'
     | '/'
     | '/welcome'
+    | '/adapt/$adaptationId'
+    | '/api/app-update'
+    | '/api/app-updates'
     | '/asuracdn/$'
     | '/asurascans/$'
     | '/browse/$sourceId'
     | '/comick/$'
     | '/comickcdn/$'
+    | '/download/android'
     | '/fenrirealm/$'
     | '/flamecdn/$'
     | '/flamecomics/$'
+    | '/generations/$generationId'
     | '/katanacdn/$'
     | '/library/categories'
     | '/mangadex/$'
@@ -543,6 +681,7 @@ export interface FileRouteTypes {
     | '/mdimage/$'
     | '/novelfull/$'
     | '/novelmtl/$'
+    | '/novelping/$'
     | '/thunderscans/$'
     | '/toonily/$'
     | '/toonilycdn/$'
@@ -551,12 +690,15 @@ export interface FileRouteTypes {
     | '/webtoonscdn/$'
     | '/weebcdn/$'
     | '/weebcentral/$'
+    | '/adapt/'
     | '/browse/'
     | '/downloads/'
+    | '/generations/'
     | '/history/'
     | '/library/'
     | '/settings/'
     | '/updates/'
+    | '/api/app/release'
     | '/api/billing/checkout'
     | '/api/billing/plan'
     | '/api/billing/portal'
@@ -565,20 +707,28 @@ export interface FileRouteTypes {
     | '/api/sync/pull'
     | '/api/sync/push'
     | '/manga/$sourceId/$slug'
+    | '/migrate/$sourceId/$slug'
+    | '/adapt/start/$sourceId/$slug'
+    | '/download/releases/$releaseId/$'
     | '/reader/$sourceId/$slug/$chapter'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   WelcomeRoute: typeof WelcomeRoute
+  AdaptAdaptationIdRoute: typeof AdaptAdaptationIdRoute
+  ApiAppUpdateRoute: typeof ApiAppUpdateRoute
+  ApiAppUpdatesRoute: typeof ApiAppUpdatesRoute
   AsuracdnSplatRoute: typeof AsuracdnSplatRoute
   AsurascansSplatRoute: typeof AsurascansSplatRoute
   BrowseSourceIdRoute: typeof BrowseSourceIdRoute
   ComickSplatRoute: typeof ComickSplatRoute
   ComickcdnSplatRoute: typeof ComickcdnSplatRoute
+  DownloadAndroidRoute: typeof DownloadAndroidRoute
   FenrirealmSplatRoute: typeof FenrirealmSplatRoute
   FlamecdnSplatRoute: typeof FlamecdnSplatRoute
   FlamecomicsSplatRoute: typeof FlamecomicsSplatRoute
+  GenerationsGenerationIdRoute: typeof GenerationsGenerationIdRoute
   KatanacdnSplatRoute: typeof KatanacdnSplatRoute
   LibraryCategoriesRoute: typeof LibraryCategoriesRoute
   MangadexSplatRoute: typeof MangadexSplatRoute
@@ -591,6 +741,7 @@ export interface RootRouteChildren {
   MdimageSplatRoute: typeof MdimageSplatRoute
   NovelfullSplatRoute: typeof NovelfullSplatRoute
   NovelmtlSplatRoute: typeof NovelmtlSplatRoute
+  NovelpingSplatRoute: typeof NovelpingSplatRoute
   ThunderscansSplatRoute: typeof ThunderscansSplatRoute
   ToonilySplatRoute: typeof ToonilySplatRoute
   ToonilycdnSplatRoute: typeof ToonilycdnSplatRoute
@@ -599,12 +750,15 @@ export interface RootRouteChildren {
   WebtoonscdnSplatRoute: typeof WebtoonscdnSplatRoute
   WeebcdnSplatRoute: typeof WeebcdnSplatRoute
   WeebcentralSplatRoute: typeof WeebcentralSplatRoute
+  AdaptIndexRoute: typeof AdaptIndexRoute
   BrowseIndexRoute: typeof BrowseIndexRoute
   DownloadsIndexRoute: typeof DownloadsIndexRoute
+  GenerationsIndexRoute: typeof GenerationsIndexRoute
   HistoryIndexRoute: typeof HistoryIndexRoute
   LibraryIndexRoute: typeof LibraryIndexRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
   UpdatesIndexRoute: typeof UpdatesIndexRoute
+  ApiAppReleaseRoute: typeof ApiAppReleaseRoute
   ApiBillingCheckoutRoute: typeof ApiBillingCheckoutRoute
   ApiBillingPlanRoute: typeof ApiBillingPlanRoute
   ApiBillingPortalRoute: typeof ApiBillingPortalRoute
@@ -613,6 +767,9 @@ export interface RootRouteChildren {
   ApiSyncPullRoute: typeof ApiSyncPullRoute
   ApiSyncPushRoute: typeof ApiSyncPushRoute
   MangaSourceIdSlugRoute: typeof MangaSourceIdSlugRoute
+  MigrateSourceIdSlugRoute: typeof MigrateSourceIdSlugRoute
+  AdaptStartSourceIdSlugRoute: typeof AdaptStartSourceIdSlugRoute
+  DownloadReleasesReleaseIdSplatRoute: typeof DownloadReleasesReleaseIdSplatRoute
   ReaderSourceIdSlugChapterRoute: typeof ReaderSourceIdSlugChapterRoute
 }
 
@@ -630,6 +787,34 @@ declare module '@tanstack/react-router' {
       path: '/welcome'
       fullPath: '/welcome'
       preLoaderRoute: typeof WelcomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/adapt/': {
+      id: '/adapt/'
+      path: '/adapt'
+      fullPath: '/adapt/'
+      preLoaderRoute: typeof AdaptIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/adapt/$adaptationId': {
+      id: '/adapt/$adaptationId'
+      path: '/adapt/$adaptationId'
+      fullPath: '/adapt/$adaptationId'
+      preLoaderRoute: typeof AdaptAdaptationIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/app-update': {
+      id: '/api/app-update'
+      path: '/api/app-update'
+      fullPath: '/api/app-update'
+      preLoaderRoute: typeof ApiAppUpdateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/app-updates': {
+      id: '/api/app-updates'
+      path: '/api/app-updates'
+      fullPath: '/api/app-updates'
+      preLoaderRoute: typeof ApiAppUpdatesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/asuracdn/$': {
@@ -674,6 +859,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ComickcdnSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/download/android': {
+      id: '/download/android'
+      path: '/download/android'
+      fullPath: '/download/android'
+      preLoaderRoute: typeof DownloadAndroidRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/downloads/': {
       id: '/downloads/'
       path: '/downloads'
@@ -700,6 +892,20 @@ declare module '@tanstack/react-router' {
       path: '/flamecomics/$'
       fullPath: '/flamecomics/$'
       preLoaderRoute: typeof FlamecomicsSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/generations/': {
+      id: '/generations/'
+      path: '/generations'
+      fullPath: '/generations/'
+      preLoaderRoute: typeof GenerationsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/generations/$generationId': {
+      id: '/generations/$generationId'
+      path: '/generations/$generationId'
+      fullPath: '/generations/$generationId'
+      preLoaderRoute: typeof GenerationsGenerationIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/history/': {
@@ -800,6 +1006,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NovelmtlSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/novelping/$': {
+      id: '/novelping/$'
+      path: '/novelping/$'
+      fullPath: '/novelping/$'
+      preLoaderRoute: typeof NovelpingSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings/': {
       id: '/settings/'
       path: '/settings'
@@ -870,6 +1083,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WeebcentralSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/app/release': {
+      id: '/api/app/release'
+      path: '/api/app/release'
+      fullPath: '/api/app/release'
+      preLoaderRoute: typeof ApiAppReleaseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/billing/checkout': {
       id: '/api/billing/checkout'
       path: '/api/billing/checkout'
@@ -926,6 +1146,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MangaSourceIdSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/migrate/$sourceId/$slug': {
+      id: '/migrate/$sourceId/$slug'
+      path: '/migrate/$sourceId/$slug'
+      fullPath: '/migrate/$sourceId/$slug'
+      preLoaderRoute: typeof MigrateSourceIdSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/adapt/start/$sourceId/$slug': {
+      id: '/adapt/start/$sourceId/$slug'
+      path: '/adapt/start/$sourceId/$slug'
+      fullPath: '/adapt/start/$sourceId/$slug'
+      preLoaderRoute: typeof AdaptStartSourceIdSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/download/releases/$releaseId/$': {
+      id: '/download/releases/$releaseId/$'
+      path: '/download/releases/$releaseId/$'
+      fullPath: '/download/releases/$releaseId/$'
+      preLoaderRoute: typeof DownloadReleasesReleaseIdSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reader/$sourceId/$slug/$chapter': {
       id: '/reader/$sourceId/$slug/$chapter'
       path: '/reader/$sourceId/$slug/$chapter'
@@ -939,14 +1180,19 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   WelcomeRoute: WelcomeRoute,
+  AdaptAdaptationIdRoute: AdaptAdaptationIdRoute,
+  ApiAppUpdateRoute: ApiAppUpdateRoute,
+  ApiAppUpdatesRoute: ApiAppUpdatesRoute,
   AsuracdnSplatRoute: AsuracdnSplatRoute,
   AsurascansSplatRoute: AsurascansSplatRoute,
   BrowseSourceIdRoute: BrowseSourceIdRoute,
   ComickSplatRoute: ComickSplatRoute,
   ComickcdnSplatRoute: ComickcdnSplatRoute,
+  DownloadAndroidRoute: DownloadAndroidRoute,
   FenrirealmSplatRoute: FenrirealmSplatRoute,
   FlamecdnSplatRoute: FlamecdnSplatRoute,
   FlamecomicsSplatRoute: FlamecomicsSplatRoute,
+  GenerationsGenerationIdRoute: GenerationsGenerationIdRoute,
   KatanacdnSplatRoute: KatanacdnSplatRoute,
   LibraryCategoriesRoute: LibraryCategoriesRoute,
   MangadexSplatRoute: MangadexSplatRoute,
@@ -959,6 +1205,7 @@ const rootRouteChildren: RootRouteChildren = {
   MdimageSplatRoute: MdimageSplatRoute,
   NovelfullSplatRoute: NovelfullSplatRoute,
   NovelmtlSplatRoute: NovelmtlSplatRoute,
+  NovelpingSplatRoute: NovelpingSplatRoute,
   ThunderscansSplatRoute: ThunderscansSplatRoute,
   ToonilySplatRoute: ToonilySplatRoute,
   ToonilycdnSplatRoute: ToonilycdnSplatRoute,
@@ -967,12 +1214,15 @@ const rootRouteChildren: RootRouteChildren = {
   WebtoonscdnSplatRoute: WebtoonscdnSplatRoute,
   WeebcdnSplatRoute: WeebcdnSplatRoute,
   WeebcentralSplatRoute: WeebcentralSplatRoute,
+  AdaptIndexRoute: AdaptIndexRoute,
   BrowseIndexRoute: BrowseIndexRoute,
   DownloadsIndexRoute: DownloadsIndexRoute,
+  GenerationsIndexRoute: GenerationsIndexRoute,
   HistoryIndexRoute: HistoryIndexRoute,
   LibraryIndexRoute: LibraryIndexRoute,
   SettingsIndexRoute: SettingsIndexRoute,
   UpdatesIndexRoute: UpdatesIndexRoute,
+  ApiAppReleaseRoute: ApiAppReleaseRoute,
   ApiBillingCheckoutRoute: ApiBillingCheckoutRoute,
   ApiBillingPlanRoute: ApiBillingPlanRoute,
   ApiBillingPortalRoute: ApiBillingPortalRoute,
@@ -981,6 +1231,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiSyncPullRoute: ApiSyncPullRoute,
   ApiSyncPushRoute: ApiSyncPushRoute,
   MangaSourceIdSlugRoute: MangaSourceIdSlugRoute,
+  MigrateSourceIdSlugRoute: MigrateSourceIdSlugRoute,
+  AdaptStartSourceIdSlugRoute: AdaptStartSourceIdSlugRoute,
+  DownloadReleasesReleaseIdSplatRoute: DownloadReleasesReleaseIdSplatRoute,
   ReaderSourceIdSlugChapterRoute: ReaderSourceIdSlugChapterRoute,
 }
 export const routeTree = rootRouteImport

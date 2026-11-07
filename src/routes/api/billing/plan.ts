@@ -4,8 +4,10 @@
  */
 
 import { createFileRoute } from '@tanstack/react-router'
+import * as Effect from 'effect/Effect'
 
-import { respondTo } from '@/server/auth'
+import { runServer } from '@/server/effect/run'
+import { respondTo } from '@/server/errors'
 import { fetchPlan } from '@/server/polar'
 
 export const Route = createFileRoute('/api/billing/plan')({
@@ -13,9 +15,13 @@ export const Route = createFileRoute('/api/billing/plan')({
     handlers: {
       GET: async () => {
         try {
-          return Response.json(await fetchPlan(), {
-            headers: { 'Cache-Control': 'public, max-age=600' },
-          })
+          return await runServer(
+            Effect.map(fetchPlan(), (plan) =>
+              Response.json(plan, {
+                headers: { 'Cache-Control': 'public, max-age=600' },
+              }),
+            ),
+          )
         } catch (error) {
           return respondTo(error)
         }

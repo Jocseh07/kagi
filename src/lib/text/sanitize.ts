@@ -1,3 +1,4 @@
+import { allowBlobImages, canParseDocuments, parseDocument, preserveFragmentIds } from './document'
 /**
  * Allowlist sanitiser for novel chapter HTML.
  *
@@ -97,14 +98,11 @@ export interface SanitizedText {
  * the reader.
  */
 export function sanitizeChapterHtml(html: string): SanitizedText {
-  if (typeof DOMParser === 'undefined') {
-    // No DOM (the smoke scripts run in Node). Refusing to guess is the safe
-    // answer: returning the input unfiltered would defeat the entire module.
+  if (!canParseDocuments()) {
     const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
     return { html: escapeHtml(text), textLength: text.length }
   }
-
-  const body = new DOMParser().parseFromString(html, 'text/html').body
+  const body = parseDocument(html, 'text/html').body
   clean(body)
 
   return {
@@ -112,6 +110,10 @@ export function sanitizeChapterHtml(html: string): SanitizedText {
     textLength: (body.textContent ?? '').replace(/\s+/g, ' ').trim().length,
   }
 }
+
+// Literal values: there is no global `Node` outside the browser.
+const ELEMENT_NODE = 1
+const TEXT_NODE = 3
 
 /**
  * Walks children in reverse so that unwrapping or removing a node cannot make
@@ -123,9 +125,9 @@ function clean(parent: Element): void {
     const node = children[index]
     if (!node) continue
 
-    if (node.nodeType === Node.TEXT_NODE) continue
+    if (node.nodeType === TEXT_NODE) continue
 
-    if (node.nodeType !== Node.ELEMENT_NODE) {
+    if (node.nodeType !== ELEMENT_NODE) {
       // Comments and processing instructions carry nothing worth keeping.
       node.parentNode?.removeChild(node)
       continue
@@ -149,7 +151,9 @@ function clean(parent: Element): void {
       continue
     }
 
+    const fragmentId = preserveFragmentIds ? element.getAttribute('id') : null
     scrubAttributes(element, allowedAttributes)
+    if (fragmentId) element.setAttribute('id', fragmentId)
 
     if (tag === 'A') {
       // A link that survived opens away from the app and must not hand the
@@ -179,7 +183,7 @@ function scrubAttributes(element: Element, allowed: readonly string[]): void {
       continue
     }
 
-    if (URL_ATTRIBUTES.has(name) && !isSafeUrl(attribute.value)) {
+    if (URL_ATTRIBUTES.has(name) && !isSafeUrl(attribute.value, allowBlobImages && name === 'src')) {
       element.removeAttribute(attribute.name)
     }
   }
@@ -192,7 +196,7 @@ function scrubAttributes(element: Element, allowed: readonly string[]): void {
  * A protocol-relative or absolute URL keeps its own scheme, which is what is
  * being checked; anything unparseable is refused.
  */
-function isSafeUrl(value: string): boolean {
+function isSafeUrl(value: string, blobImage = false): boolean {
   const trimmed = value.trim()
   if (!trimmed) return false
   // Control characters are how `java\0script:` style bypasses are smuggled past
@@ -206,7 +210,8 @@ function isSafeUrl(value: string): boolean {
   try {
     const base =
       typeof location === 'undefined' ? 'https://invalid.example' : location.href
-    return SAFE_SCHEMES.has(new URL(trimmed, base).protocol)
+    const protocol = new URL(trimmed, base).protocol
+    return SAFE_SCHEMES.has(protocol) || (blobImage && protocol === 'blob:')
   } catch {
     return false
   }

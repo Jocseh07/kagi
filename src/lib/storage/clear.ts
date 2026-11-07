@@ -8,6 +8,9 @@
 import { wipeDatabase } from '@/lib/db/client'
 import { runMigrations } from '@/lib/db/migrate'
 import { PAGE_CACHE, SHELL_CACHE } from '@/lib/offline/types'
+import { stopAdaptationRunner } from '@/lib/adapt/pipeline'
+import { clearAllAdaptations } from '@/lib/adapt/store'
+import { clearBooks } from '@/lib/sources/local-novel/shelf'
 
 /** IndexedDB holding the local source's folder handle; see `storage/handles`. */
 const HANDLE_DB_NAME = 'kagi-handles'
@@ -16,6 +19,7 @@ const HANDLE_DB_NAME = 'kagi-handles'
 const LOCAL_STORAGE_KEYS = [
   'kagi.device-id',
   'kagi:reader-mode',
+  'kagi:reader-chapter-breaks',
   'kagi:theme',
   'kagi:theme-active',
   'kagi:theme-catalog',
@@ -45,6 +49,22 @@ export async function eraseLibrary(): Promise<void> {
   await wipeDatabase()
   if (typeof caches !== 'undefined') await caches.delete(PAGE_CACHE)
   await runMigrations()
+}
+
+/**
+ * Removes every imported novel.
+ *
+ * Library entries for them stay: their bytes are the only thing here, and the
+ * rows are cheap enough that erasing them would cost more than it frees.
+ */
+export async function clearImportedBooks(): Promise<void> {
+  await clearBooks()
+}
+
+/** Stops drawing first, so no stage writes into a store that was just emptied. */
+export async function clearAdaptations(): Promise<void> {
+  stopAdaptationRunner()
+  await clearAllAdaptations()
 }
 
 /**

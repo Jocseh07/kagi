@@ -1,13 +1,8 @@
+import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { SettingRow, SettingsGroup } from '@/components/settings/settings-group'
+import { Combobox } from '@/components/ui/combobox'
 import { Switch } from '@/components/ui/switch'
 import { listCategories } from '@/lib/db/categories'
 import { useDatabase } from '@/lib/db/provider'
@@ -24,8 +19,14 @@ import type {
   UpdatePrefs,
   UpdateSkipRules,
 } from '@/lib/updates/update-manager'
+import { describeError } from '@/lib/ui/describe-error'
 
 const ALL_CATEGORIES = 'all'
+
+const INTERVAL_OPTIONS = UPDATE_INTERVALS.map((hours) => ({
+  value: String(hours),
+  label: intervalLabel(hours),
+}))
 
 const SKIP_RULES: {
   key: keyof UpdateSkipRules
@@ -34,20 +35,18 @@ const SKIP_RULES: {
 }[] = [
   {
     key: 'withUnread',
-    title: 'Skip entries with unread chapters',
-    summary:
-      'A series you are already behind on is not waiting on a check to give you something to read.',
+    title: 'Entries with unread chapters',
+    summary: 'You already have something to read.',
   },
   {
     key: 'notStarted',
-    title: 'Skip entries you have not started',
-    summary:
-      'Nothing has been opened, so the chapters already stored are new enough.',
+    title: 'Entries you have not started',
+    summary: 'The chapters already stored are new enough.',
   },
   {
     key: 'completed',
-    title: 'Skip completed entries',
-    summary: 'The source says the series has finished, so there is nothing to find.',
+    title: 'Completed entries',
+    summary: 'The source says the series has finished.',
   },
 ]
 
@@ -70,6 +69,17 @@ export function UpdateSettingsPanel() {
     staleTime: 0,
   })
 
+  const categoryOptions = useMemo(
+    () => [
+      { value: ALL_CATEGORIES, label: 'All categories' },
+      ...(categories.data ?? []).map((category) => ({
+        value: category.id,
+        label: category.name,
+      })),
+    ],
+    [categories.data],
+  )
+
   const save = useMutation({
     mutationFn: (patch: Partial<UpdatePrefs>) => saveUpdatePrefs(patch),
     onSettled: () =>
@@ -85,90 +95,65 @@ export function UpdateSettingsPanel() {
   const disabled = !ready || prefs.isPending
 
   return (
-    <section className="rounded-lg border border-border bg-card">
-      <header className="flex items-baseline justify-between gap-3 border-b border-border px-4 py-3">
-        <h2 className="text-sm font-medium">Updates</h2>
-        <span className="text-xs text-muted-foreground">
-          Used by the check on the Updates page
-        </span>
-      </header>
-
-      <div className="divide-y divide-border">
-        <div className="flex items-center gap-4 px-4 py-3">
-          <div className="min-w-0 flex-1 space-y-0.5">
-            <Label htmlFor="updates-interval" className="font-normal">
-              Remind me to check
-            </Label>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Flags the Updates page when the last check is older than this.
-              Nothing runs until you start it.
-            </p>
-          </div>
-          <div className="shrink-0">
-            <Select
+    <>
+      <SettingsGroup
+        title="Update checks"
+        description="Used by the check on the Updates page. Nothing runs until you start it."
+      >
+        <SettingRow
+          id="updates-interval"
+          label="Remind me to check"
+          hint="Flags the Updates page once the last check is older than this."
+          control={
+            <Combobox
+              id="updates-interval"
+              label="Remind me to check"
+              className="w-full @md:w-48"
+              options={INTERVAL_OPTIONS}
               value={String(current.intervalHours)}
               disabled={disabled}
-              onValueChange={(value) =>
+              onChange={(value) =>
                 save.mutate({ intervalHours: intervalOf(value) })
               }
-            >
-              <SelectTrigger id="updates-interval" className="w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {UPDATE_INTERVALS.map((hours) => (
-                  <SelectItem key={hours} value={String(hours)}>
-                    {intervalLabel(hours)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+            />
+          }
+        />
 
-        <div className="flex items-center gap-4 px-4 py-3">
-          <div className="min-w-0 flex-1 space-y-0.5">
-            <Label htmlFor="updates-category" className="font-normal">
-              Categories to check
-            </Label>
-            <p className="text-xs text-muted-foreground">
-              Narrowing this is the cheapest way to keep a check short.
-            </p>
-          </div>
-          <div className="shrink-0">
-            <Select
+        <SettingRow
+          id="updates-category"
+          label="Categories to check"
+          hint="Fewer categories, shorter checks."
+          control={
+            <Combobox
+              id="updates-category"
+              label="Categories to check"
+              className="w-full @md:w-48"
+              options={categoryOptions}
               value={current.categoryId ?? ALL_CATEGORIES}
               disabled={disabled || categories.isPending}
-              onValueChange={(value) =>
+              searchPlaceholder="Search categories"
+              onChange={(value) =>
                 save.mutate({
                   categoryId: value === ALL_CATEGORIES ? null : value,
                 })
               }
-            >
-              <SelectTrigger id="updates-category" className="w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_CATEGORIES}>All categories</SelectItem>
-                {(categories.data ?? []).map((category) => (
-                  <SelectItem key={category.id} value={category.id}>
-                    {category.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+            />
+          }
+        />
+      </SettingsGroup>
 
+      <SettingsGroup
+        title="Skip during a check"
+        description="Each skipped entry is one less request to a source."
+      >
         {SKIP_RULES.map((rule) => (
-          <div key={rule.key} className="flex items-center gap-4 px-4 py-3">
-            <div className="min-w-0 flex-1 space-y-0.5">
-              <Label htmlFor={`updates-${rule.key}`} className="font-normal">
-                {rule.title}
-              </Label>
-              <p className="text-xs text-muted-foreground">{rule.summary}</p>
-            </div>
-            <div className="shrink-0">
+          <SettingRow
+            key={rule.key}
+            id={`updates-${rule.key}`}
+            inline
+            label={rule.title}
+            hint={rule.summary}
+            control={
               <Switch
                 id={`updates-${rule.key}`}
                 checked={current.rules[rule.key]}
@@ -179,17 +164,17 @@ export function UpdateSettingsPanel() {
                   })
                 }
               />
-            </div>
-          </div>
+            }
+          />
         ))}
-      </div>
+      </SettingsGroup>
 
       {save.isError && (
-        <p className="px-4 pb-3 text-xs text-destructive">
-          Could not save: {save.error.message}
+        <p role="alert" className="px-1 text-xs text-destructive">
+          Could not save. {describeError(save.error)}
         </p>
       )}
-    </section>
+    </>
   )
 }
 

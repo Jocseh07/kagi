@@ -1,17 +1,15 @@
+import { sourceProxyPolicies } from '@/lib/transport/source-policy'
 import { createFileRoute } from '@tanstack/react-router'
 
+import { runServer } from '@/server/effect/run'
 import { proxyTo } from '@/server/proxy'
 
 // Toonily hides mature series until the age cookie is set; the extension
 // sets the same one.
-const handler = ({ request }: { request: Request }) =>
-  proxyTo(request, {
-    prefix: '/toonily',
-    target: 'https://toonily.com',
-    redirects: 'manual',
-    browserHeaders: true,
-    cookies: { 'toonily-mature': '1' },
-  })
+const handler = async ({ request }: { request: Request }) =>
+  await runServer(
+    proxyTo(request, sourceProxyPolicies['/toonily']),
+  )
 
 export const Route = createFileRoute('/toonily/$')({
   server: {

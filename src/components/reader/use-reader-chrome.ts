@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MouseEvent, RefObject } from 'react'
 
-/** How close to an edge still counts as "at the top" / "at the bottom". */
+/** How close to the top still counts as "at the top". */
 const EDGE = 8
 
 /** Downward movement that counts as reading on rather than scroll noise. */
@@ -21,8 +21,8 @@ interface ReaderChrome {
  * Shows and hides the reader's chrome.
  *
  * Reading is the point, so the bars get out of the way as soon as the chapter
- * is being scrolled through, and come back exactly where they are wanted: at
- * the top, at the bottom where the chapter buttons live, and on a tap.
+ * is being scrolled through, and come back at the top and on a tap. Reaching
+ * the bottom leaves them alone: the end of a chapter is still being read.
  *
  * The scroll element belongs to whichever viewer is mounted, so the listener is
  * re-attached whenever that changes — `attachKey` is what says it has.
@@ -50,42 +50,13 @@ export function useReaderChrome(
     lastTop.current = container.scrollTop
     let frame = 0
 
-    /*
-      `scrollHeight` and `clientHeight` are layout reads, and this runs on every
-      scroll frame — enough to force a synchronous layout each time the strip
-      has mounted or measured a row. Neither changes from scrolling: the height
-      of the content moves when rows are measured, and the height of the box
-      moves when the window does. Both are things a ResizeObserver reports, so
-      they are cached here and read back for free while scrolling.
-
-      The children are observed as well as the scroller, because the scroller
-      is held at the height of the viewport: everything that moves its scroll
-      height moves a child instead. All of them, not just the first — the strip
-      keeps its pages and its footer in one child, but the text viewer holds
-      the prose and the footer as siblings.
-    */
-    let scrollHeight = container.scrollHeight
-    let clientHeight = container.clientHeight
-    const observer =
-      typeof ResizeObserver === 'undefined'
-        ? null
-        : new ResizeObserver(() => {
-            scrollHeight = container.scrollHeight
-            clientHeight = container.clientHeight
-          })
-    observer?.observe(container)
-    for (const child of container.children) observer?.observe(child)
-
     const measure = () => {
       frame = 0
       const top = container.scrollTop
       const previous = lastTop.current
       lastTop.current = top
 
-      const atTop = top <= EDGE
-      const atBottom = top + clientHeight >= scrollHeight - EDGE
-
-      if (atTop || atBottom) {
+      if (top <= EDGE) {
         apply(true)
         return
       }
@@ -100,7 +71,6 @@ export function useReaderChrome(
 
     return () => {
       container.removeEventListener('scroll', onScroll)
-      observer?.disconnect()
       if (frame) cancelAnimationFrame(frame)
     }
   }, [scrollRef, attachKey, apply])

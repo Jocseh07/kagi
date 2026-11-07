@@ -103,7 +103,7 @@ export function partsOf(key: string): string[] {
  * device that set it rather than narrowing every other device's library.
  */
 export function isDeviceLocalSetting(key: string): boolean {
-  return key.startsWith('sync.') || key === 'library.filters'
+  return key.startsWith('sync.') || key.startsWith('adapt.') || key === 'library.filters'
 }
 
 export function isFactKind(value: string): value is FactKind {

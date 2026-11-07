@@ -11,6 +11,8 @@
 import { toast } from 'sonner'
 import type { ReactNode } from 'react'
 
+import { describeError } from '@/lib/ui/describe-error'
+
 /** Long enough to read a short line, short enough to stay out of the way. */
 const SUCCESS_MS = 3500
 
@@ -19,10 +21,16 @@ export interface NotifyOptions {
   id?: string
   description?: ReactNode
   action?: { label: string; onClick: () => void }
+  /** Fires once the toast leaves, whether it timed out or was dismissed. */
+  onClose?: () => void
+}
+
+function toSonner({ onClose, ...options }: NotifyOptions) {
+  return { ...options, onAutoClose: onClose, onDismiss: onClose }
 }
 
 function success(message: string, options: NotifyOptions = {}): void {
-  toast.success(message, { duration: SUCCESS_MS, ...options })
+  toast.success(message, { duration: SUCCESS_MS, ...toSonner(options) })
 }
 
 /**
@@ -33,21 +41,22 @@ function success(message: string, options: NotifyOptions = {}): void {
 function error(message: string, cause?: unknown, options: NotifyOptions = {}): void {
   toast.error(message, {
     duration: Number.POSITIVE_INFINITY,
-    description: cause === undefined ? undefined : messageOf(cause),
-    ...options,
+    description: cause === undefined ? undefined : describeError(cause),
+    ...toSonner(options),
   })
 }
 
 /**
- * A question with one button on it — used where an action implies a follow-up
+ * A question with one button on it, used where an action implies a follow-up
  * the user probably wants but never asked for.
  */
 function ask(message: string, options: NotifyOptions & { action: NotifyOptions['action'] }): void {
-  toast(message, { duration: 8000, ...options })
+  toast(message, { duration: 8000, ...toSonner(options) })
 }
 
-export const notify = { success, error, ask }
-
-export function messageOf(cause: unknown): string {
-  return cause instanceof Error ? cause.message : 'unknown error'
+function dismiss(id: string): void {
+  toast.dismiss(id)
 }
+
+export const notify = { success, error, ask, dismiss }
+

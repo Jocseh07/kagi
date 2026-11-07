@@ -496,7 +496,7 @@ async function evictOldestIfCapped(
     const oldest = saved.find((entry) => entry.chapterId !== exceptChapterId)
     if (!oldest) return null
     await unsaveChapter(oldest.chapterId)
-    return `${oldest.mangaTitle} — ${oldest.chapterName}`
+    return `${oldest.mangaTitle}: ${oldest.chapterName}`
   } catch {
     return null
   }

@@ -1,0 +1,33 @@
+[package]
+name = "kagi-rune"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[features]
+profile = ["rune/frame-profile"]
+
+[dependencies]
+rune = { git = "https://github.com/anomalyco/rune", rev = "ae8dfeb87cfad081fa87dc38d215ed0d1ba417a7", features = ["native-file-dialog"] }
+rune-kit = { git = "https://github.com/anomalyco/rune", rev = "ae8dfeb87cfad081fa87dc38d215ed0d1ba417a7" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "avif"] }
+wuff = "=0.2.9"
+
+[patch."https://github.com/anomalyco/rune"]
+rune = { path = "../.tmp/rune-upstream/crates/rune" }
+rune-kit = { path = "../.tmp/rune-upstream/crates/rune-kit" }
+rune-motion = { path = "../.tmp/rune-upstream/crates/rune-motion" }
+rune-staging = { path = "../.tmp/rune-upstream/crates/rune-staging" }
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.release]
+codegen-units = 16
+incremental = true
+
+[profile.perf]
+inherits = "release"
+incremental = false

@@ -11,6 +11,9 @@ export const dbKeys = {
     ['db', 'saved-chapter-ids', mangaId] as const,
   chapterPages: (chapterId: string) =>
     ['db', 'chapter-pages', chapterId] as const,
+  /** Prefix of every `chapterSaved` key in one series. */
+  chapterSavedIn: (sourceId: string, slug: string) =>
+    ['db', 'chapter-saved', sourceId, slug] as const,
   /** Keyed by route params: the reader knows a chapter before its row id. */
   chapterSaved: (sourceId: string, slug: string, chapterKey: string) =>
     ['db', 'chapter-saved', sourceId, slug, chapterKey] as const,

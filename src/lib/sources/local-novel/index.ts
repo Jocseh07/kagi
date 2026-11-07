@@ -1,16 +1,15 @@
 /**
- * Local novels: EPUB and plain-text files in the same folder the local comic
- * source reads.
+ * Local novels: EPUB and plain-text files imported into this browser.
  *
  * This is the one novel source with no CORS gate, because there is no network:
  * most light-novel sites send no `Access-Control-Allow-Origin` at all and are
- * simply unreachable from a browser, so a folder on disk is the source that
- * cannot be taken away by a change of policy upstream.
+ * simply unreachable from a browser, so a file the reader already has is the
+ * source that cannot be taken away by a change of policy upstream.
  *
- * It deliberately shares `local`'s library root rather than asking for a second
- * folder. The two sources partition it by file type: `local` reads series
- * folders and comic archives and explicitly refuses EPUBs, which is exactly the
- * gap this fills.
+ * Books are imported through a file input and kept in IndexedDB (see
+ * `./shelf`), so this is also the one local source with no File System Access
+ * requirement and it works in Firefox and on iOS. The `local` comic source
+ * still reads a folder: a comic library is gigabytes and belongs on disk.
  *
  * Identity is the file name — a novel is `/series/<file>` and a chapter is
  * `/series/<file>/chapter/<spine index>`. The spine index is stable for a given
@@ -18,7 +17,6 @@
  */
 
 import { coverUrls } from '../local/blob-urls'
-import { getLibraryRoot, requireLibraryRoot } from '../local/library'
 import { naturalCompare } from '../local/scan'
 import { sanitizeChapterHtml } from '../../text/sanitize'
 import type {
@@ -31,37 +29,21 @@ import type {
   SManga,
   Source,
 } from '../types'
-import { readEpubChapter, readEpubCover, readEpubStructure } from './epub'
-import type { EpubBook } from './epub'
+import { readEpubChapter, readEpubCover } from './epub'
+import type { EpubBook } from './epub-package'
+import { listBooks, readBookFile, readStructure } from './shelf'
+import type { NovelBook } from './shelf'
 
 export const LOCAL_NOVEL_SOURCE_ID = 'local-novel'
 
 const PER_PAGE = 40
 
 const SORT_TITLE = 0
-const SORT_MODIFIED = 1
-const SORT_VALUES = ['Title', 'Last modified']
-
-/**
- * Structure of the books seen this page load.
- *
- * Reading a spine means inflating the package document, so the series screen,
- * the chapter list and every chapter opened from it would otherwise re-parse
- * the same file. Cleared only by a reload, matching the timestamp cache in
- * `local/library`.
- */
-const structures = new Map<string, EpubBook>()
-
-function isEpubName(name: string): boolean {
-  return name.toLowerCase().endsWith('.epub')
-}
+const SORT_ADDED = 1
+const SORT_VALUES = ['Title', 'Recently added']
 
 function isTextName(name: string): boolean {
   return /\.(txt|text)$/i.test(name)
-}
-
-function isNovelName(name: string): boolean {
-  return isEpubName(name) || isTextName(name)
 }
 
 /** A fresh object per call: query caches hold on to these. */
@@ -82,7 +64,7 @@ export class LocalNovelSource implements Source {
   readonly isLocal = true
   readonly supportsFilterFetching = false
   readonly supportsRelatedMangas = false
-  /** Read from disk, so there is no host budget to pace against. */
+  /** Read from local storage, so there is no host budget to pace against. */
   readonly pageFetchIntervalMs = 0
 
   // ------------------------------------------------------------- browsing --
@@ -92,7 +74,7 @@ export class LocalNovelSource implements Source {
   }
 
   getLatestUpdates(page: number): Promise<MangasPage> {
-    return this.list(page, '', SORT_MODIFIED, false)
+    return this.list(page, '', SORT_ADDED, false)
   }
 
   getSearchMangaList(
@@ -110,8 +92,9 @@ export class LocalNovelSource implements Source {
   }
 
   /**
-   * Browsing with no folder chosen is an empty shelf, not an error: the picker
-   * in Browse is what the user needs to see, and an error panel would bury it.
+   * Browsing with nothing imported is an empty shelf, not an error: the
+   * importer in Browse is what the user needs to see, and an error panel would
+   * bury it.
    */
   private async list(
     page: number,
@@ -119,29 +102,27 @@ export class LocalNovelSource implements Source {
     sortIndex: number,
     ascending: boolean,
   ): Promise<MangasPage> {
-    const root = await getLibraryRoot()
-    if (!root) return emptyPage()
-
     const needle = query.trim().toLowerCase()
-    const files = (await listNovelFiles(root)).filter(
-      (file) => !needle || file.name.toLowerCase().includes(needle),
+    const books = (await listBooks()).filter(
+      (book) => !needle || book.name.toLowerCase().includes(needle),
     )
+    if (books.length === 0) return emptyPage()
 
     const sorted =
-      sortIndex === SORT_MODIFIED
-        ? await sortByModified(files, ascending)
-        : sortByName(files, ascending)
+      sortIndex === SORT_ADDED
+        ? sortByAdded(books, ascending)
+        : sortByName(books, ascending)
 
     const start = (page - 1) * PER_PAGE
     const slice = sorted.slice(start, start + PER_PAGE)
 
     return {
-      mangas: slice.map((file) => ({
-        url: seriesUrl(file.name),
-        title: displayTitle(file.name),
+      mangas: slice.map((book) => ({
+        url: seriesUrl(book.name),
+        title: displayTitle(book.name),
         status: 'unknown' as const,
         initialized: false,
-        memo: { slug: file.name },
+        memo: { slug: book.name },
       })),
       hasNextPage: start + PER_PAGE < sorted.length,
     }
@@ -154,8 +135,7 @@ export class LocalNovelSource implements Source {
     opts: { fetchDetails: boolean; fetchChapters: boolean },
   ): Promise<MangaUpdate> {
     const fileName = fileNameOf(manga)
-    const handle = await this.findFile(fileName)
-    const file = await handle.getFile()
+    const file = await readBookFile(fileName)
 
     if (isTextName(fileName)) {
       const chapters = opts.fetchChapters
@@ -174,7 +154,7 @@ export class LocalNovelSource implements Source {
       }
     }
 
-    const book = await this.structureOf(fileName, file)
+    const book = await readStructure(fileName)
 
     const chapters = opts.fetchChapters
       ? book.chapters.map((chapter, index) => ({
@@ -194,7 +174,7 @@ export class LocalNovelSource implements Source {
         title: book.title?.trim() || displayTitle(fileName),
         author: book.author,
         description: book.description,
-        // A file on disk is not being serialised; nothing more is coming.
+        // A file already imported is not being serialised; nothing more is coming.
         status: 'completed',
         thumbnailUrl: await this.coverUrl(fileName, file, book),
         initialized: true,
@@ -217,14 +197,13 @@ export class LocalNovelSource implements Source {
     chapter: SChapter,
   ): Promise<ChapterText> {
     const fileName = fileNameOf(manga)
-    const handle = await this.findFile(fileName)
-    const file = await handle.getFile()
+    const file = await readBookFile(fileName)
 
     if (isTextName(fileName)) {
       return sanitizeChapterHtml(paragraphsFrom(await file.text()))
     }
 
-    const book = await this.structureOf(fileName, file)
+    const book = await readStructure(fileName)
     const index = Number(chapter.url.split('/').pop())
     const entry = book.chapters[index]
     if (!entry) {
@@ -235,23 +214,6 @@ export class LocalNovelSource implements Source {
   }
 
   // -------------------------------------------------------------- helpers --
-
-  private async findFile(fileName: string): Promise<FileSystemFileHandle> {
-    const root = await requireLibraryRoot()
-    const handle = await root.getFileHandle(fileName).catch(() => null)
-    if (!handle) {
-      throw new Error(`"${fileName}" is no longer in the library folder.`)
-    }
-    return handle
-  }
-
-  private async structureOf(fileName: string, file: File): Promise<EpubBook> {
-    const cached = structures.get(fileName)
-    if (cached) return cached
-    const book = await readEpubStructure(file)
-    structures.set(fileName, book)
-    return book
-  }
 
   private async coverUrl(
     fileName: string,
@@ -293,22 +255,6 @@ export class LocalNovelSource implements Source {
 }
 
 // ---------------------------------------------------------------- helpers --
-
-interface NovelFile {
-  name: string
-  handle: FileSystemFileHandle
-}
-
-async function listNovelFiles(
-  root: FileSystemDirectoryHandle,
-): Promise<NovelFile[]> {
-  const files: NovelFile[] = []
-  for await (const [name, handle] of root.entries()) {
-    if (handle.kind !== 'file' || !isNovelName(name)) continue
-    files.push({ name, handle: handle as FileSystemFileHandle })
-  }
-  return files
-}
 
 function seriesUrl(fileName: string): string {
   return `/series/${fileName}`
@@ -358,35 +304,15 @@ function paragraphsFrom(text: string): string {
     .join('')
 }
 
-function sortByName(files: NovelFile[], ascending: boolean): NovelFile[] {
-  const sorted = [...files].sort((a, b) => naturalCompare(a.name, b.name))
+function sortByName(books: NovelBook[], ascending: boolean): NovelBook[] {
+  const sorted = [...books].sort((a, b) => naturalCompare(a.name, b.name))
   return ascending ? sorted : sorted.reverse()
 }
 
-async function sortByModified(
-  files: NovelFile[],
-  ascending: boolean,
-): Promise<NovelFile[]> {
-  const dated = await Promise.all(
-    files.map(async (file) => ({
-      file,
-      at: await lastModified(file.handle),
-    })),
-  )
-
-  dated.sort(
+function sortByAdded(books: NovelBook[], ascending: boolean): NovelBook[] {
+  return [...books].sort(
     (a, b) =>
-      (ascending ? a.at - b.at : b.at - a.at) ||
-      naturalCompare(a.file.name, b.file.name),
+      (ascending ? a.addedAt - b.addedAt : b.addedAt - a.addedAt) ||
+      naturalCompare(a.name, b.name),
   )
-  return dated.map((entry) => entry.file)
-}
-
-async function lastModified(handle: FileSystemFileHandle): Promise<number> {
-  try {
-    return (await handle.getFile()).lastModified
-  } catch {
-    // An unreadable file sorts oldest rather than failing the whole shelf.
-    return 0
-  }
 }

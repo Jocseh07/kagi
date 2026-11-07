@@ -2,6 +2,7 @@ import { DirectFetchTransport, RateLimiter } from '../../transport/direct-fetch'
 import type { HttpTransport } from '../../transport/types'
 import type {
   ConfigurableSource,
+  Filter,
   FilterList,
   MangaStatus,
   MangaUpdate,
@@ -14,12 +15,14 @@ import type {
 } from '../types'
 import {
   parseAllTitles,
+  parseAllTitlesV3,
   parseRanking,
   parseTitleDetail,
   parseViewer,
   parseWebHome,
 } from './proto'
 import type { Chapter, Title, TitleDetail } from './proto'
+import { appOrigin } from '../app-origin'
 
 /** Where the site lives, and what "open in browser" must point at. */
 const SITE_URL = 'https://mangaplus.shueisha.co.jp'
@@ -51,12 +54,12 @@ const ICON_URL =
  */
 function resolveApiBase(): string {
   if (typeof location === 'undefined') return API_URL
-  return new URL('/mangaplus/api', location.origin).toString()
+  return new URL('/mangaplus/api', appOrigin()).toString()
 }
 
 function resolveCdnBase(): string | null {
   if (typeof location === 'undefined') return null
-  return new URL('/mangapluscdn', location.origin).toString()
+  return new URL('/mangapluscdn', appOrigin()).toString()
 }
 
 /** How many titles one browse page shows, since the API pages none of this. */
@@ -81,6 +84,23 @@ const IMAGE_QUALITY_VALUES = [
   { label: 'Medium', value: 'high' },
   { label: 'High', value: 'super_high' },
 ] as const
+
+/**
+ * The publication types `all_v3` splits its catalogue by. It serves one type
+ * per call and refuses a call without one, which is why the genre filter
+ * carries a status alongside it.
+ */
+const TYPE_VALUES = [
+  ['Serializing', 'serializing'],
+  ['Completed', 'completed'],
+  ['One-shot', 'one-shot'],
+] as const
+
+const DEFAULT_TYPE = TYPE_VALUES[0][1]
+
+export interface MangaPlusFilterData {
+  genres: { label: string; value: string }[]
+}
 
 const PREF_QUALITY = 'imageQuality'
 const PREF_SPLIT = 'splitImages'
@@ -112,7 +132,7 @@ export class MangaPlus implements Source, ConfigurableSource {
   readonly versionCode = 1
   readonly supportsLatest = true
   readonly isLocal = false
-  readonly supportsFilterFetching = false
+  readonly supportsFilterFetching = true
   readonly supportsRelatedMangas = false
   readonly pageFetchIntervalMs = PAGE_FETCH_INTERVAL_MS
 
@@ -123,6 +143,9 @@ export class MangaPlus implements Source, ConfigurableSource {
   private imageQuality: string = 'super_high'
   private splitImages = true
   private subtitleOnly = false
+
+  /** Genre label to the slug `all_v3` tags its entries with. */
+  private genreValues = new Map<string, string>()
 
   constructor(
     transport?: HttpTransport,
@@ -219,23 +242,38 @@ export class MangaPlus implements Source, ConfigurableSource {
   }
 
   /**
-   * Search over the whole catalogue, matched here rather than upstream.
+   * Search over the catalogue, matched here rather than upstream.
    *
    * The API has no search endpoint; its own site filters the full title list in
    * the browser, and this does the same. The list is one call, so paging is a
    * slice.
+   *
+   * `allV2` is the whole catalogue regardless of publication type, so a plain
+   * search keeps reading it. A chosen genre or type moves to `all_v3`, which
+   * is the only endpoint that tags its entries.
    */
   async getSearchMangaList(
     page: number,
     query: string,
-    _filters: FilterList,
+    filters: FilterList,
     signal?: AbortSignal,
   ): Promise<MangasPage> {
-    const titles = parseAllTitles(
-      await this.bytes(new URL(`${this.apiBase}/title_list/allV2`), signal),
-    )
+    const type =
+      TYPE_VALUES.find(([label]) => label === chosen(filters, 'Status'))?.[1] ??
+      DEFAULT_TYPE
+    const genre = this.genreValues.get(chosen(filters, 'Genre')) ?? ''
 
     const term = query.trim().toLowerCase()
+    const titles =
+      !genre && type === DEFAULT_TYPE && term
+        ? parseAllTitles(
+            await this.bytes(
+              new URL(`${this.apiBase}/title_list/allV2`),
+              signal,
+            ),
+          )
+        : await this.catalogue(type, genre, signal)
+
     const matched = term
       ? titles.filter(
           (title) =>
@@ -251,6 +289,42 @@ export class MangaPlus implements Source, ConfigurableSource {
       mangas: this.toMangas(slice),
       hasNextPage: start + slice.length < matched.length,
     }
+  }
+
+  /**
+   * One publication type's catalogue, narrowed to a genre.
+   *
+   * A title appears once per genre group it belongs to in some responses, so
+   * ids are de-duplicated rather than trusted.
+   */
+  private async catalogue(
+    type: string,
+    genre: string,
+    signal?: AbortSignal,
+  ): Promise<Title[]> {
+    const { entries } = parseAllTitlesV3(
+      await this.bytes(this.allTitlesUrl(type), signal),
+    )
+
+    const seen = new Set<number>()
+    const titles: Title[] = []
+    for (const entry of entries) {
+      if (genre && !entry.genres.some((tag) => tag.slug === genre)) continue
+      const { title } = entry
+      if (title.titleId === 0 || seen.has(title.titleId)) continue
+
+      seen.add(title.titleId)
+      titles.push(title)
+    }
+    return titles
+  }
+
+  private allTitlesUrl(type: string): URL {
+    const url = new URL(`${this.apiBase}/title_list/all_v3`)
+    url.searchParams.set('type', type)
+    url.searchParams.set('lang', API_LANG)
+    url.searchParams.set('clang', API_LANG)
+    return url
   }
 
   // -------------------------------------------------------------- details --
@@ -324,12 +398,44 @@ export class MangaPlus implements Source, ConfigurableSource {
   // -------------------------------------------------------------- filters --
 
   /**
-   * None. The API's genre vocabulary lives on a different endpoint from the
-   * title list this source searches, and filtering one by the other returns
-   * nothing — so there is no filter rather than one that empties the screen.
+   * The genre vocabulary, read off the same endpoint search reads.
+   *
+   * A genre is a slug on an `all_v3` entry, so the two cannot disagree, which
+   * is what a filter built from any other endpoint used to get wrong.
    */
-  getFilterList(): FilterList {
-    return []
+  async fetchFilterData(signal?: AbortSignal): Promise<MangaPlusFilterData> {
+    try {
+      const { tags } = parseAllTitlesV3(
+        await this.bytes(this.allTitlesUrl(DEFAULT_TYPE), signal),
+      )
+      const genres = tags
+        .map((tag) => ({ label: tag.name.trim(), value: tag.slug.trim() }))
+        .filter((genre) => genre.label && genre.value)
+      this.rememberGenres(genres)
+      return { genres }
+    } catch {
+      signal?.throwIfAborted()
+      return { genres: [] }
+    }
+  }
+
+  getFilterList(data?: unknown): FilterList {
+    const genres = (data as MangaPlusFilterData | undefined)?.genres ?? []
+    // Search reads the instance map rather than this argument, which the app
+    // does not thread back into `getSearchMangaList`.
+    if (genres.length) this.rememberGenres(genres)
+
+    return [
+      selectFilter('Status', TYPE_VALUES),
+      selectFilter('Genre', [
+        ['All', ''],
+        ...genres.map((genre) => [genre.label, genre.value] as const),
+      ]),
+    ]
+  }
+
+  private rememberGenres(genres: MangaPlusFilterData['genres']): void {
+    for (const genre of genres) this.genreValues.set(genre.label, genre.value)
   }
 
   // ----------------------------------------------------------------- urls --
@@ -350,7 +456,7 @@ export class MangaPlus implements Source, ConfigurableSource {
 
   private async bytes(url: URL, signal?: AbortSignal): Promise<Uint8Array> {
     const res = await this.http.fetch({ url: url.toString(), signal })
-    return new Uint8Array(await (await res.blob()).arrayBuffer())
+    return new Uint8Array(await res.arrayBuffer())
   }
 
   // --------------------------------------------------------------- images --
@@ -372,7 +478,12 @@ export class MangaPlus implements Source, ConfigurableSource {
     viewToken?: string,
     encryptionKey?: string,
   ): string {
-    if (!this.cdnBase) return url
+    if (!this.cdnBase) {
+      const direct = new URL(url)
+      if (viewToken) direct.searchParams.set('vw', viewToken)
+      if (encryptionKey) direct.searchParams.set('key', encryptionKey)
+      return direct.toString()
+    }
 
     let parsed: URL
     try {
@@ -463,6 +574,24 @@ export class MangaPlus implements Source, ConfigurableSource {
       scanlator: 'MANGA Plus',
     }
   }
+}
+
+// ----------------------------------------------------------------- filters --
+
+function selectFilter(
+  name: string,
+  values: readonly (readonly [string, string])[],
+): Filter {
+  return { type: 'select', name, values: values.map(([l]) => l), state: 0 }
+}
+
+/** The label a named select is sitting on, or nothing when it is absent. */
+function chosen(filters: FilterList, name: string): string {
+  for (const filter of filters) {
+    if (filter.type !== 'select' || filter.name !== name) continue
+    return filter.values[filter.state] ?? ''
+  }
+  return ''
 }
 
 // ------------------------------------------------------------- conversion --

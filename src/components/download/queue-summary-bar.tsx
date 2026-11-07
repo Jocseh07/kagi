@@ -121,12 +121,12 @@ export function QueueSummaryBar({
             <p className="text-xs font-medium text-destructive">
               {runtime.halt.reason === 'quota'
                 ? 'Downloads stopped: out of storage'
-                : 'Downloads stopped: the library database is unavailable'}
+                : 'Downloads stopped: library unavailable'}
             </p>
             <p className="text-xs leading-relaxed text-muted-foreground">
               {runtime.halt.message}
               {runtime.halt.reason === 'quota' &&
-                ' The rest of the queue was paused rather than run into the same wall — free some space, then resume.'}
+                ' The queue is paused. Free some space, then resume.'}
             </p>
           </div>
         </div>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookHeart, Search, Tags } from 'lucide-react'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { BookHeart, Search, SearchX, Tags } from 'lucide-react'
 
 import { KindTabs, kindTabOf } from '@/components/kind-tabs'
 import type { KindTab } from '@/components/kind-tabs'
@@ -14,6 +14,7 @@ import { SelectionBar } from '@/components/library/selection-bar'
 import { MangaGridSkeleton } from '@/components/manga-grid'
 import { MangaListSkeleton } from '@/components/manga-list-row'
 import { PageContainer } from '@/components/page-container'
+import { FirstSyncNotice } from '@/components/sync/first-sync-notice'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorPanel } from '@/components/ui/error-panel'
@@ -44,7 +45,9 @@ import type {
 import { useDatabase } from '@/lib/db/provider'
 import { dbKeys } from '@/lib/db/query-keys'
 import { useCompactList } from '@/lib/display/compact'
+import { useFirstSyncPending } from '@/lib/sync/first-sync'
 import type { ContentKind } from '@/lib/sources/types'
+import { cn } from '@/lib/utils'
 
 /**
  * What the page is showing, held in the URL so Back undoes a filter, a reload
@@ -107,6 +110,10 @@ export const Route = createFileRoute('/library/')({
  * rather than guessed at.
  */
 function LibraryPending() {
+  // Drawn at the density the entries will arrive in, so the covers do not
+  // flash in ahead of rows the setting already asked for.
+  const compact = useCompactList()
+
   return (
     <PageContainer>
       <header className="flex flex-wrap items-center gap-3">
@@ -118,7 +125,11 @@ function LibraryPending() {
           </Link>
         </Button>
       </header>
-      <MangaGridSkeleton count={6} />
+      {compact ? (
+        <MangaListSkeleton count={8} />
+      ) : (
+        <MangaGridSkeleton count={6} />
+      )}
     </PageContainer>
   )
 }
@@ -167,6 +178,7 @@ function LibraryIndex() {
 
   const { prefs, setFilters, setSort, setCategoryId } = useLibraryPrefs(ready)
   const compact = useCompactList()
+  const firstSyncPending = useFirstSyncPending()
 
   // The URL wins where it says anything; the stored preferences fill the rest,
   // so an existing reader's last filters still apply on a bare `/library`.
@@ -233,6 +245,11 @@ function LibraryIndex() {
     })
   }
 
+  function clearFilters() {
+    setRawSearch('')
+    applyFilters(DEFAULT_LIBRARY_FILTERS)
+  }
+
   function applyKind(next: KindTab) {
     void navigate({
       search: (prev) => ({ ...prev, kind: next === 'all' ? undefined : next }),
@@ -294,6 +311,8 @@ function LibraryIndex() {
       }),
     enabled: ready,
     staleTime: 0,
+    // A new filter or search keeps the grid up, dimmed, until its answer lands.
+    placeholderData: keepPreviousData,
   })
 
   const entries = useMemo(() => library.data ?? [], [library.data])
@@ -469,33 +488,52 @@ function LibraryIndex() {
 
       {status === 'error' ? (
         <ErrorPanel
-          error={error ?? new Error('The library database is unavailable.')}
+          error={error}
         />
       ) : library.isError ? (
         <ErrorPanel error={library.error} onRetry={() => void library.refetch()} />
-      ) : library.isPending ? (
+      ) : library.isPending || favoriteCount.isPending || kindCounts.isPending ? (
         compact ? (
           <MangaListSkeleton count={8} />
         ) : (
           <MangaGridSkeleton count={6} />
         )
+      ) : total === 0 && firstSyncPending ? (
+        <div className="flex flex-col gap-4">
+          <FirstSyncNotice />
+          {compact ? <MangaListSkeleton count={8} /> : <MangaGridSkeleton count={6} />}
+        </div>
       ) : total === 0 ? (
         <EmptyLibrary />
       ) : entries.length === 0 ? (
-        <NoMatches filtering={filtering} kind={kind} kindTotal={scopeTotal} />
-      ) : (
-        <LibraryGrid
-          entries={entries}
-          selected={selected}
-          compact={compact}
-          onSelect={handleSelect}
+        <NoMatches
+          filtering={filtering}
+          kind={kind}
+          kindTotal={scopeTotal}
+          onClearFilters={clearFilters}
         />
+      ) : (
+        <div
+          aria-busy={library.isPlaceholderData}
+          className={cn(
+            'transition-opacity motion-reduce:transition-none',
+            library.isPlaceholderData && 'opacity-60',
+          )}
+        >
+          <LibraryGrid
+            entries={entries}
+            selected={selected}
+            compact={compact}
+            onSelect={handleSelect}
+          />
+        </div>
       )}
 
       {selected.size > 0 && (
         <SelectionBar
           count={selected.size}
           busy={busy}
+          markingRead={markRead.isPending}
           onSetCategories={() => setPickerOpen(true)}
           onMarkRead={() => markRead.mutate()}
           onRemove={() => remove.mutate()}
@@ -543,27 +581,49 @@ function NoMatches({
   filtering,
   kind,
   kindTotal,
+  onClearFilters,
 }: {
   filtering: boolean
   kind: ContentKind | undefined
   kindTotal: number
+  onClearFilters(): void
 }) {
   if (kind && kindTotal === 0) {
     return (
-      <p className="py-16 text-center text-sm text-muted-foreground">
-        {kind === 'novel'
-          ? 'No novels in your library yet.'
-          : 'No comics in your library yet.'}
-      </p>
+      <EmptyState
+        icon={BookHeart}
+        title={kind === 'novel' ? 'No novels yet' : 'No comics yet'}
+        description="Add one from Browse."
+        action={
+          <Button asChild variant="outline" size="sm">
+            <Link to="/browse">Browse sources</Link>
+          </Button>
+        }
+      />
+    )
+  }
+
+  if (filtering) {
+    return (
+      <EmptyState
+        icon={SearchX}
+        title="No matches"
+        description="Nothing in your library fits these filters."
+        action={
+          <Button variant="outline" size="sm" onClick={onClearFilters}>
+            Clear filters
+          </Button>
+        }
+      />
     )
   }
 
   return (
-    <p className="py-16 text-center text-sm text-muted-foreground">
-      {filtering
-        ? 'Nothing matches the current search and filters.'
-        : 'This category is empty.'}
-    </p>
+    <EmptyState
+      icon={Tags}
+      title="This category is empty"
+      description="Select series, then choose Category."
+    />
   )
 }
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Loader2, Search } from 'lucide-react'
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { ArrowLeft, Search, SearchX } from 'lucide-react'
 
 import { FilterDialog } from '@/components/filter-dialog'
 import { ContentRatingBadge } from '@/components/sources/content-rating-badge'
@@ -10,8 +10,10 @@ import { MangaListSkeleton } from '@/components/manga-list-row'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PageContainer } from '@/components/page-container'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorPanel } from '@/components/ui/error-panel'
 import { Input } from '@/components/ui/input'
+import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getSource } from '@/lib/sources/registry'
 import {
@@ -25,8 +27,9 @@ import { useCompactList } from '@/lib/display/compact'
 import { useDebounced } from '@/lib/use-debounced'
 import { hasCoverArt } from '@/lib/sources/types'
 import type { FilterList, Source } from '@/lib/sources/types'
+import { cn } from '@/lib/utils'
 
-type Tab = 'popular' | 'latest' | 'search'
+type Tab = 'popular' | 'hot' | 'latest' | 'search'
 
 /**
  * What is on screen, held in the URL so Back undoes a filter rather than
@@ -55,7 +58,9 @@ export const Route = createFileRoute('/browse/$sourceId')({
   validateSearch: (search: Record<string, unknown>): BrowseSearch => {
     const next: BrowseSearch = {}
 
-    if (search.tab === 'latest' || search.tab === 'search') next.tab = search.tab
+    if (search.tab === 'hot' || search.tab === 'latest' || search.tab === 'search') {
+      next.tab = search.tab
+    }
     if (typeof search.q === 'string' && search.q.trim()) next.q = search.q
 
     const f = parseFilterDiff(search.f)
@@ -84,6 +89,10 @@ export const Route = createFileRoute('/browse/$sourceId')({
 function BrowseSourcePending() {
   const { sourceId } = Route.useParams()
   const source = tryGetSource(sourceId)
+  // The same two reads the loaded view makes, so the wait is drawn at the
+  // density that replaces it rather than at the one it used to assume.
+  const showCover = source ? hasCoverArt(source) : true
+  const compact = useCompactList() || !showCover
 
   return (
     <PageContainer>
@@ -113,7 +122,11 @@ function BrowseSourcePending() {
 
       <div className="flex flex-col gap-2 md:gap-3 lg:gap-4">
         <Skeleton className="h-9 w-56 rounded-md" />
-        <MangaGridSkeleton />
+        {compact ? (
+          <MangaListSkeleton showCover={showCover} />
+        ) : (
+          <MangaGridSkeleton />
+        )}
       </div>
     </PageContainer>
   )
@@ -145,7 +158,10 @@ function BrowseSource() {
 function SourceBrowser({ source }: { source: Source }) {
   const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
-  const tab: Tab = search.tab ?? 'popular'
+  // A stale `?tab=hot` on a source without the listing shows Popular rather
+  // than an empty tab.
+  const tab: Tab =
+    search.tab === 'hot' && !source.getHotManga ? 'popular' : (search.tab ?? 'popular')
   // A source with no cover art has nothing to put in a tile, so it lists as
   // rows whatever the setting says — a grid of identical placeholders reads as
   // breakage rather than as absence.
@@ -184,7 +200,7 @@ function SourceBrowser({ source }: { source: Source }) {
 
   const filterData = useQuery({
     queryKey: ['filter-data', source.id],
-    queryFn: () => source.fetchFilterData!(),
+    queryFn: ({ signal }) => source.fetchFilterData!(signal),
     enabled: source.supportsFilterFetching && Boolean(source.fetchFilterData),
     staleTime: Infinity,
   })
@@ -238,11 +254,13 @@ function SourceBrowser({ source }: { source: Source }) {
     initialPageParam: 1,
     queryFn: ({ pageParam }) => {
       if (tab === 'popular') return source.getPopularManga(pageParam)
+      if (tab === 'hot' && source.getHotManga) return source.getHotManga(pageParam)
       if (tab === 'latest') return source.getLatestUpdates(pageParam)
       return source.getSearchMangaList(pageParam, query, filters)
     },
     getNextPageParam: (lastPage, pages) =>
       lastPage.hasNextPage ? pages.length + 1 : undefined,
+    placeholderData: keepPreviousData,
   })
 
   const mangas = useMemo(
@@ -250,8 +268,10 @@ function SourceBrowser({ source }: { source: Source }) {
     [results.data],
   )
 
+  // Not while the previous answer stands in: its next page belongs to a
+  // different query.
   const sentinelRef = useInfiniteScroll(
-    results.hasNextPage && !results.isFetchingNextPage,
+    results.hasNextPage && !results.isFetchingNextPage && !results.isPlaceholderData,
     results.fetchNextPage,
   )
 
@@ -266,6 +286,14 @@ function SourceBrowser({ source }: { source: Source }) {
       }),
     })
   }
+
+  function clearSearch() {
+    void navigate({
+      search: (prev) => ({ ...prev, q: undefined, f: undefined }),
+    })
+  }
+
+  const filtered = tab === 'search' && (query !== '' || search.f !== undefined)
 
   function handleTabChange(next: Tab) {
     void navigate({
@@ -317,6 +345,7 @@ function SourceBrowser({ source }: { source: Source }) {
         <div className="flex items-center justify-between gap-2">
           <TabsList>
             <TabsTrigger value="popular">Popular</TabsTrigger>
+            {source.getHotManga && <TabsTrigger value="hot">Hot</TabsTrigger>}
             {source.supportsLatest && (
               <TabsTrigger value="latest">Latest</TabsTrigger>
             )}
@@ -331,7 +360,14 @@ function SourceBrowser({ source }: { source: Source }) {
           />
         </div>
 
-        <TabsContent value={tab}>
+        <TabsContent
+          value={tab}
+          aria-busy={results.isPlaceholderData}
+          className={cn(
+            'transition-opacity motion-reduce:transition-none',
+            results.isPlaceholderData && 'opacity-60',
+          )}
+        >
           {results.isPending ? (
             compact ? (
               <MangaListSkeleton showCover={showCover} />
@@ -344,9 +380,20 @@ function SourceBrowser({ source }: { source: Source }) {
               onRetry={() => void results.refetch()}
             />
           ) : mangas.length === 0 ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">
-              No results.
-            </p>
+            <EmptyState
+              icon={SearchX}
+              title="No results"
+              description={
+                filtered ? 'Nothing here fits this search.' : 'This source listed nothing here.'
+              }
+              action={
+                filtered ? (
+                  <Button variant="outline" size="sm" onClick={clearSearch}>
+                    Clear filters
+                  </Button>
+                ) : undefined
+              }
+            />
           ) : (
             <>
               <MangaGrid
@@ -360,7 +407,7 @@ function SourceBrowser({ source }: { source: Source }) {
 
               {results.isFetchingNextPage && (
                 <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" />
+                  <Spinner size="sm" />
                   Loading more
                 </div>
               )}

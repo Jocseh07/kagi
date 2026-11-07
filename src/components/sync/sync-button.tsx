@@ -65,7 +65,7 @@ export function SyncButton() {
       )}
       onClick={() => void sync()}
     >
-      <RefreshCw className={running ? 'animate-spin' : undefined} />
+      <RefreshCw className={running ? 'animate-spin motion-reduce:animate-none' : undefined} />
 
       {/* Ringed in the header's own surface so the dot reads as a badge on the
           icon rather than a stray mark next to it. */}

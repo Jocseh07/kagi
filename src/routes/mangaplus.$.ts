@@ -1,5 +1,7 @@
+import { sourceProxyPolicies } from '@/lib/transport/source-policy'
 import { createFileRoute } from '@tanstack/react-router'
 
+import { runServer } from '@/server/effect/run'
 import { proxyTo } from '@/server/proxy'
 
 /**
@@ -19,13 +21,10 @@ function sessionToken(): string {
   return session
 }
 
-const handler = ({ request }: { request: Request }) =>
-  proxyTo(request, {
-    prefix: '/mangaplus',
-    target: 'https://jumpg-webapi.tokyo-cdn.com',
-    redirects: 'follow',
-    headers: { 'SESSION-TOKEN': sessionToken() },
-  })
+const handler = async ({ request }: { request: Request }) =>
+  await runServer(
+    proxyTo(request, {...sourceProxyPolicies['/mangaplus'], headers: {'SESSION-TOKEN': sessionToken()}}),
+  )
 
 export const Route = createFileRoute('/mangaplus/$')({
   server: {

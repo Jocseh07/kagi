@@ -9,56 +9,23 @@
  * Tenancy is the Clerk user id on both sides: it is handed to Polar as the
  * customer's `external_id` at checkout, and read back from the same field on
  * every webhook. Nothing in a request body decides which row is written.
+ *
+ * The client and its wiring are the `Billing` service; what is left here is
+ * the cache and the reduction of Polar's shapes to what the app stores.
  */
 
-import { Polar } from '@polar-sh/sdk'
 import { PolarError } from '@polar-sh/sdk/models/errors/polarerror.js'
+import * as Effect from 'effect/Effect'
 import { eq } from 'drizzle-orm'
 
+import type { PlanSummary, SubscriptionSummary } from '@/lib/billing/types'
 import { syncEntitlements } from '@/lib/db/sync-schema'
-import { SyncError, cloudflareEnv } from './auth'
-import type { SyncDb } from './db'
+import { Billing } from './effect/billing'
+import { Database } from './effect/database'
+import { toAppError } from './effect/errors'
+import { AppError } from './errors'
 
-interface PolarEnv {
-  POLAR_ACCESS_TOKEN?: string
-  POLAR_WEBHOOK_SECRET?: string
-  POLAR_PRODUCT_ID?: string
-  POLAR_SERVER?: string
-}
-
-export function polarEnv(): PolarEnv {
-  return cloudflareEnv<PolarEnv>()
-}
-
-export function polarClient(): Polar {
-  const env = polarEnv()
-  if (!env.POLAR_ACCESS_TOKEN) {
-    throw new SyncError(500, 'Polar is not configured on this deployment.')
-  }
-  return new Polar({
-    accessToken: env.POLAR_ACCESS_TOKEN,
-    server: env.POLAR_SERVER === 'sandbox' ? 'sandbox' : 'production',
-  })
-}
-
-export function polarProductId(): string {
-  const id = polarEnv().POLAR_PRODUCT_ID
-  if (!id) throw new SyncError(500, 'POLAR_PRODUCT_ID is unset.')
-  return id
-}
-
-/** Wire and storage shape of an active subscription, for display only. */
-export interface SubscriptionSummary {
-  status: string
-  /** Minor units, as Polar reports it. */
-  amount: number
-  currency: string
-  interval: string
-  /** ISO timestamps. */
-  currentPeriodEnd: string
-  cancelAtPeriodEnd: boolean
-  endsAt: string | null
-}
+export type { PlanSummary, SubscriptionSummary }
 
 export interface Entitlement {
   active: boolean
@@ -108,11 +75,11 @@ function parseSubscription(raw: string | null): SubscriptionSummary | null {
   }
 }
 
-export async function writeEntitlement(
-  db: SyncDb,
+export const writeEntitlement = Effect.fn('polar.writeEntitlement')(function* (
   userId: string,
   entitlement: Entitlement,
-): Promise<void> {
+) {
+  const db = yield* Database
   const row = {
     userId,
     active: entitlement.active ? 1 : 0,
@@ -122,41 +89,45 @@ export async function writeEntitlement(
       : null,
     updatedAt: Date.now(),
   }
-  await db
-    .insert(syncEntitlements)
-    .values(row)
-    .onConflictDoUpdate({
-      target: syncEntitlements.userId,
-      set: {
-        active: row.active,
-        polarCustomerId: row.polarCustomerId,
-        subscription: row.subscription,
-        updatedAt: row.updatedAt,
-      },
-    })
-}
+  yield* db.query((c) =>
+    c
+      .insert(syncEntitlements)
+      .values(row)
+      .onConflictDoUpdate({
+        target: syncEntitlements.userId,
+        set: {
+          active: row.active,
+          polarCustomerId: row.polarCustomerId,
+          subscription: row.subscription,
+          updatedAt: row.updatedAt,
+        },
+      }),
+  )
+})
 
 /** The cached answer, or `null` when Polar has never been asked. */
-export async function readEntitlement(
-  db: SyncDb,
+export const readEntitlement = Effect.fn('polar.readEntitlement')(function* (
   userId: string,
-): Promise<Entitlement | null> {
-  const [row] = await db
-    .select({
-      active: syncEntitlements.active,
-      polarCustomerId: syncEntitlements.polarCustomerId,
-      subscription: syncEntitlements.subscription,
-    })
-    .from(syncEntitlements)
-    .where(eq(syncEntitlements.userId, userId))
-    .limit(1)
+) {
+  const db = yield* Database
+  const [row] = yield* db.query((c) =>
+    c
+      .select({
+        active: syncEntitlements.active,
+        polarCustomerId: syncEntitlements.polarCustomerId,
+        subscription: syncEntitlements.subscription,
+      })
+      .from(syncEntitlements)
+      .where(eq(syncEntitlements.userId, userId))
+      .limit(1),
+  )
   if (!row) return null
   return {
     active: row.active === 1,
     polarCustomerId: row.polarCustomerId,
     subscription: parseSubscription(row.subscription),
-  }
-}
+  } satisfies Entitlement
+})
 
 /**
  * Asks Polar and stores the answer.
@@ -164,57 +135,50 @@ export async function readEntitlement(
  * A customer Polar has never heard of is simply not subscribed: checkout
  * creates the customer, so before the first purchase the lookup is a 404.
  */
-export async function refreshEntitlement(
-  db: SyncDb,
+export const refreshEntitlement = Effect.fn('polar.refreshEntitlement')(function* (
   userId: string,
-): Promise<Entitlement> {
-  let entitlement: Entitlement
-  try {
-    const state = await polarClient().customers.getStateExternal({
-      externalId: userId,
-    })
-    entitlement = entitlementFromState(state)
-  } catch (error) {
-    if (error instanceof PolarError && error.statusCode === 404) {
-      entitlement = { active: false, polarCustomerId: null, subscription: null }
-    } else {
-      throw new SyncError(502, 'Could not reach the payment provider.')
-    }
-  }
-  await writeEntitlement(db, userId, entitlement)
+) {
+  const billing = yield* Billing
+  const polar = yield* billing.client
+
+  const entitlement = yield* Effect.tryPromise({
+    try: async (): Promise<Entitlement> => {
+      try {
+        const state = await polar.customers.getStateExternal({ externalId: userId })
+        return entitlementFromState(state)
+      } catch (cause) {
+        if (cause instanceof PolarError && cause.statusCode === 404) {
+          return { active: false, polarCustomerId: null, subscription: null }
+        }
+        throw new AppError(502, 'Could not reach the payment provider.')
+      }
+    },
+    catch: (cause) => toAppError(cause, 'Could not reach the payment provider.'),
+  })
+
+  yield* writeEntitlement(userId, entitlement)
   return entitlement
-}
+})
 
 /** The cache when it has an answer, Polar when it does not. */
-export async function resolveEntitlement(
-  db: SyncDb,
+export const resolveEntitlement = Effect.fn('polar.resolveEntitlement')(function* (
   userId: string,
-): Promise<Entitlement> {
-  return (await readEntitlement(db, userId)) ?? refreshEntitlement(db, userId)
-}
+) {
+  return (yield* readEntitlement(userId)) ?? (yield* refreshEntitlement(userId))
+})
 
 /**
  * The enforcement point for the sync routes. 402 rather than 403 so the client
  * can tell "not subscribed" apart from "not allowed".
  */
-export async function requireSyncEntitled(
-  db: SyncDb,
+export const requireSyncEntitled = Effect.fn('polar.requireSyncEntitled')(function* (
   userId: string,
-): Promise<void> {
-  const entitlement = await resolveEntitlement(db, userId)
+) {
+  const entitlement = yield* resolveEntitlement(userId)
   if (!entitlement.active) {
-    throw new SyncError(402, 'Sync needs the Sync plan.')
+    return yield* Effect.fail(new AppError(402, 'Sync needs the Sync plan.'))
   }
-}
-
-/** What the Sync plan costs, as shown before checkout. */
-export interface PlanSummary {
-  name: string
-  /** Minor units. `null` for pay-what-you-want or free prices. */
-  amount: number | null
-  currency: string | null
-  interval: string | null
-}
+})
 
 let planCache: { at: number; plan: PlanSummary } | null = null
 const PLAN_TTL_MS = 10 * 60 * 1000
@@ -223,13 +187,19 @@ const PLAN_TTL_MS = 10 * 60 * 1000
  * The product's name and price, cached per isolate. It changes when you edit
  * the product in Polar and almost never otherwise, so ten minutes is plenty.
  */
-export async function fetchPlan(): Promise<PlanSummary> {
+export const fetchPlan = Effect.fn('polar.fetchPlan')(function* () {
   if (planCache && Date.now() - planCache.at < PLAN_TTL_MS) return planCache.plan
 
-  const product = await polarClient().products.get({ id: polarProductId() })
-  const price = product.prices.find(
-    (p) => !p.isArchived && p.amountType === 'fixed',
-  )
+  const billing = yield* Billing
+  const polar = yield* billing.client
+  const id = yield* billing.productId
+
+  const product = yield* Effect.tryPromise({
+    try: () => polar.products.get({ id }),
+    catch: () => new AppError(502, 'Could not reach the payment provider.'),
+  })
+
+  const price = product.prices.find((p) => !p.isArchived && p.amountType === 'fixed')
   const plan: PlanSummary = {
     name: product.name,
     amount: price && price.amountType === 'fixed' ? price.priceAmount : null,
@@ -238,4 +208,4 @@ export async function fetchPlan(): Promise<PlanSummary> {
   }
   planCache = { at: Date.now(), plan }
   return plan
-}
+})

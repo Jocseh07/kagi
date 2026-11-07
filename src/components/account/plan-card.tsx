@@ -9,11 +9,18 @@
  * a `ClerkProvider`. The caller does that check; see lib/sync/config.ts.
  */
 
-import { Check } from 'lucide-react'
+import { useState } from 'react'
+import { Check, ChevronDown } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 import { formatDate, formatPrice } from '@/lib/billing/client'
 import type { PlanSummary, SubscriptionSummary } from '@/lib/billing/client'
 import {
@@ -24,14 +31,16 @@ import {
   usePlan,
   usePortal,
 } from '@/lib/billing/use-entitlement'
+import { describeError } from '@/lib/ui/describe-error'
 
-export function PlanCard() {
+/** `className` lets a caller that already draws the card drop this border. */
+export function PlanCard({ className }: { className?: string }) {
   const { status, loading, error } = useEntitlement()
   const plan = usePlan()
 
   if (loading || status === undefined) {
     return (
-      <div className="space-y-2 rounded-md border border-border p-3">
+      <div className={cn('space-y-2 rounded-md border border-border p-3', className)}>
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-3 w-48" />
         <Skeleton className="h-8 w-24" />
@@ -41,14 +50,23 @@ export function PlanCard() {
 
   if (error) {
     return (
-      <p role="alert" className="rounded-md border border-border p-3 text-xs text-muted-foreground">
+      <p
+        role="alert"
+        className={cn('rounded-md border border-border p-3 text-xs text-muted-foreground', className)}
+      >
         Could not check your plan. {error}
       </p>
     )
   }
 
   if (status.active && status.subscription) {
-    return <SubscribedCard subscription={status.subscription} name={plan.data?.name} />
+    return (
+      <SubscribedCard
+        subscription={status.subscription}
+        name={plan.data?.name}
+        className={className}
+      />
+    )
   }
 
   return (
@@ -56,6 +74,7 @@ export function PlanCard() {
       plan={plan.data}
       planError={plan.error?.message ?? null}
       lapsed={status.hasCustomer}
+      className={className}
     />
   )
 }
@@ -64,16 +83,18 @@ function OfferCard({
   plan,
   planError,
   lapsed,
+  className,
 }: {
   plan: PlanSummary | undefined
   planError: string | null
   lapsed: boolean
+  className?: string
 }) {
   const checkout = useCheckout()
   const portal = usePortal()
 
   return (
-    <div className="space-y-3 rounded-md border border-border p-3">
+    <div className={cn('space-y-3 rounded-md border border-border p-3', className)}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-0.5">
           <p className="text-sm font-medium">{plan?.name ?? 'Sync'}</p>
@@ -114,64 +135,84 @@ function OfferCard({
 
       {checkout.error ? (
         <p role="alert" className="text-xs text-muted-foreground">
-          Could not open checkout. {checkout.error.message}
+          Could not open checkout. {describeError(checkout.error)}
         </p>
       ) : null}
       {portal.error ? (
         <p role="alert" className="text-xs text-muted-foreground">
-          Could not open the subscription page. {portal.error.message}
+          Could not open the subscription page. {describeError(portal.error)}
         </p>
       ) : null}
     </div>
   )
 }
 
+/**
+ * A row: what is paid and when it renews, with the way to change it beside.
+ * The plan's facts are already known to a subscriber, so they fold away.
+ */
 function SubscribedCard({
   subscription,
   name,
+  className,
 }: {
   subscription: SubscriptionSummary
   name: string | undefined
+  className?: string
 }) {
   const portal = usePortal()
+  const [open, setOpen] = useState(false)
   const ending = subscription.cancelAtPeriodEnd || subscription.endsAt !== null
   const trial = subscription.status === 'trialing'
   const when = formatDate(subscription.endsAt ?? subscription.currentPeriodEnd)
 
   return (
-    <div className="space-y-3 rounded-md border border-border p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 space-y-0.5">
-          <p className="text-sm font-medium">{name ?? 'Sync'}</p>
-          <p className="text-sm tabular-nums text-muted-foreground">
+    <div className={cn('space-y-3 rounded-md border border-border p-3', className)}>
+      <div className="flex flex-col gap-3 @md:flex-row @md:items-center @md:gap-4">
+        <div className="min-w-0 flex-1 space-y-0.5">
+          <p className="flex items-center gap-2 text-sm font-medium">
+            {name ?? 'Sync'}
+            <Badge variant={ending ? 'outline' : 'secondary'}>
+              {trial ? 'Trial' : ending ? 'Ending' : 'Active'}
+            </Badge>
+          </p>
+          <p className="text-xs tabular-nums text-muted-foreground">
             {formatPrice(subscription.amount, subscription.currency, subscription.interval)}
+            {' · '}
+            {trial ? 'trial ends' : ending ? 'ends' : 'renews'} {when}
           </p>
         </div>
-        <Badge variant={ending ? 'outline' : 'secondary'}>
-          {trial ? 'Trial' : ending ? 'Ending' : 'Active'}
-        </Badge>
+
+        <Button
+          variant="outline"
+          className="h-10 md:h-9"
+          onClick={() => portal.mutate()}
+          disabled={portal.isPending || portal.isSuccess}
+        >
+          {portal.isPending || portal.isSuccess ? 'Opening…' : 'Manage subscription'}
+        </Button>
       </div>
 
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-        <dt className="font-medium">{trial ? 'Trial ends' : ending ? 'Ends' : 'Renews'}</dt>
-        <dd className="tabular-nums text-muted-foreground">{when}</dd>
-      </dl>
-
-      <PlanFacts />
-
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => portal.mutate()}
-        disabled={portal.isPending || portal.isSuccess}
-      >
-        {portal.isPending || portal.isSuccess ? 'Opening…' : 'Manage subscription'}
-      </Button>
       {portal.error ? (
         <p role="alert" className="text-xs text-muted-foreground">
-          Could not open the subscription page. {portal.error.message}
+          Could not open the subscription page. {describeError(portal.error)}
         </p>
       ) : null}
+
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger className="flex h-10 w-full items-center justify-between gap-3 text-xs text-muted-foreground hover:text-foreground md:h-8">
+          What the plan includes
+          <ChevronDown
+            className={cn(
+              'size-4 transition-transform duration-150 motion-reduce:transition-none',
+              open && 'rotate-180',
+            )}
+          />
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-1">
+          <PlanFacts />
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   )
 }

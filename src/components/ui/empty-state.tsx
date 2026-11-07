@@ -29,12 +29,10 @@ export function EmptyState({
         className,
       )}
     >
-      <div className="flex size-12 items-center justify-center rounded-full bg-secondary text-muted-foreground">
-        <Icon className="size-6" />
-      </div>
+      <Icon className="size-6 text-muted-foreground" />
       <div className="space-y-1">
-        <p className="text-sm font-medium">{title}</p>
-        <p className="max-w-sm text-sm text-muted-foreground">{description}</p>
+        <p className="text-base font-medium sm:text-sm">{title}</p>
+        <p className="max-w-sm text-base text-muted-foreground sm:text-sm">{description}</p>
       </div>
       {action}
     </div>

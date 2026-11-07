@@ -211,6 +211,10 @@ export class WuxiaWorld implements Source {
     return this.browse(queryOf([], 1), page, signal)
   }
 
+  getHotManga(page: number, signal?: AbortSignal): Promise<MangasPage> {
+    return this.browse(queryOf([], 7), page, signal)
+  }
+
   /**
    * The newest novels on the site.
    *
@@ -411,9 +415,17 @@ export class WuxiaWorld implements Source {
       ),
     )
 
-    return chapters
-      .filter((chapter) => chapter.visible && chapter.slug)
-      .map((chapter, index) => toSChapter(chapter, slug, index, translator))
+    const listed = chapters.filter((chapter) => chapter.visible && chapter.slug)
+
+    // Proto3 drops a false bool, so a list that omits the pricing submessage
+    // decodes as `isFree: false` on every row. A novel where nothing at all is
+    // free is that omission rather than a real paywall, so the flag is dropped
+    // and the list looks exactly as it did before any of this existed.
+    const priced = listed.some((chapter) => chapter.isFree)
+
+    return listed.map((chapter, index) =>
+      toSChapter(chapter, slug, index, translator, priced),
+    )
   }
 
   // ----------------------------------------------------------------- text --
@@ -526,22 +538,26 @@ export class WuxiaWorld implements Source {
    * `Mature`. The filter takes names rather than ids, so nothing has to be
    * remembered between building the sheet and running the search.
    */
-  async fetchFilterData(): Promise<WuxiaWorldFilterData> {
+  async fetchFilterData(signal?: AbortSignal): Promise<WuxiaWorldFilterData> {
     try {
       const levels = await Promise.all([
-        this.fetchGenres(0),
-        this.fetchGenres(1),
+        this.fetchGenres(0, signal),
+        this.fetchGenres(1, signal),
       ])
       return { genres: [...new Set(levels.flat())] }
     } catch {
+      signal?.throwIfAborted()
       // A filter sheet without genres still sorts and filters by status.
       return { genres: [] }
     }
   }
 
-  private async fetchGenres(level: number): Promise<string[]> {
+  private async fetchGenres(
+    level: number,
+    signal?: AbortSignal,
+  ): Promise<string[]> {
     return parseGenres(
-      await unary(this.http, this.apiBase, GET_GENRES, writeInt(1, level)),
+      await unary(this.http, this.apiBase, GET_GENRES, writeInt(1, level), signal),
     )
   }
 
@@ -635,6 +651,8 @@ function toSChapter(
   slug: string,
   index: number,
   translator?: string,
+  /** Whether the list carried pricing at all. See `fetchChapters`. */
+  priced = false,
 ): SChapter {
   return {
     url: `/series/${slug}/chapter/${chapter.slug}`,
@@ -650,6 +668,7 @@ function toSChapter(
     // Who translated the novel. `scanlator` is the field the app already shows
     // for "who produced this chapter", which is what a translation is here.
     scanlator: translator?.trim() || undefined,
+    locked: priced ? !chapter.isFree : undefined,
     memo: { chapterSlug: chapter.slug, id: chapter.entityId, slug },
   }
 }

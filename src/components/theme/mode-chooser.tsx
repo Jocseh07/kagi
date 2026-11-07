@@ -8,9 +8,8 @@
 
 import { Monitor, Moon, Sun } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { THEMES, useTheme, type Theme } from '@/lib/theme/mode'
-import { cn } from '@/lib/utils'
 
 const MODE_ICONS = { light: Sun, dark: Moon, system: Monitor } as const
 
@@ -18,25 +17,29 @@ export function ModeChooser() {
   const [theme, setTheme] = useTheme()
 
   return (
-    <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Mode">
+    <ToggleGroup
+      type="single"
+      aria-label="Mode"
+      value={theme}
+      // An empty value is a press on the chosen item; a mode is always set.
+      onValueChange={(value) => {
+        if (value) setTheme(value as Theme)
+      }}
+      className="grid w-full grid-cols-3 @md:w-auto"
+    >
       {THEMES.map((option) => {
         const Icon = MODE_ICONS[option.value]
-        const active = theme === option.value
         return (
-          <Button
+          <ToggleGroupItem
             key={option.value}
-            variant={active ? 'secondary' : 'outline'}
-            size="sm"
-            role="radio"
-            aria-checked={active}
-            className={cn(active && 'border-ring')}
-            onClick={() => setTheme(option.value as Theme)}
+            value={option.value}
+            className="h-10 md:h-8"
           >
             <Icon />
             {option.label}
-          </Button>
+          </ToggleGroupItem>
         )
       })}
-    </div>
+    </ToggleGroup>
   )
 }

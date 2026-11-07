@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { X } from 'lucide-react'
 
 import { ToolbarButton } from './ui'
 
@@ -16,7 +17,8 @@ interface ResumeNoticeProps {
 
 /**
  * Tells the reader why the chapter did not open at the beginning, and offers
- * the way back. A silent jump reads as a bug.
+ * the way back. A silent jump reads as a bug. Laid out by the caller, in the
+ * column above the reader's bar.
  */
 export function ResumeNotice({
   position,
@@ -39,23 +41,20 @@ export function ResumeNotice({
   return (
     <div
       role="status"
-      className="pointer-events-none absolute inset-x-0 bottom-[calc(1rem+env(safe-area-inset-bottom))] flex justify-center px-4"
+      className="pointer-events-auto flex w-full max-w-xl items-center gap-2 rounded-xl border border-border bg-card py-1.5 pr-1.5 pl-3 shadow-lg"
     >
-      <div className="pointer-events-auto flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-1.5 shadow-lg">
-        <span className="text-xs text-muted-foreground">
-          Resumed at {position}
-        </span>
-        <ToolbarButton variant="solid" className="h-6 px-2" onClick={onStartOver}>
-          Start over
-        </ToolbarButton>
-        <ToolbarButton
-          className="h-6 px-2"
-          aria-label="Dismiss"
-          onClick={onDismiss}
-        >
-          Dismiss
-        </ToolbarButton>
-      </div>
+      <span className="min-w-0 flex-1 truncate text-sm">Resumed at {position}</span>
+      <ToolbarButton variant="solid" className="h-10 px-3" onClick={onStartOver}>
+        Start over
+      </ToolbarButton>
+      <ToolbarButton
+        className="size-10 p-0"
+        aria-label="Dismiss"
+        title="Dismiss"
+        onClick={onDismiss}
+      >
+        <X aria-hidden className="size-4" />
+      </ToolbarButton>
     </div>
   )
 }

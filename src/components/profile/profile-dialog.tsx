@@ -13,7 +13,7 @@
 import { useState } from 'react'
 
 import { AccountPanel } from '@/components/account/account-panel'
-import { DEFAULT_ACCENT } from '@/components/profile/avatar-accent'
+import { DEFAULT_ACCENT } from '@/lib/profile/avatar-accent'
 import { ProfileFields, type ProfileDraft } from '@/components/profile/profile-fields'
 import { Button } from '@/components/ui/button'
 import {

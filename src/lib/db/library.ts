@@ -108,12 +108,12 @@ const IN_FOLLOWED_GROUP = sql`(${FOLLOWED_GROUP} is null or coalesce(${chapters.
 // group alone: on an aggregator the other groups are copies of the same
 // chapters, and counting them tells the reader about chapters they will
 // never open.
-const UNREAD_COUNT = sql<number>`coalesce(sum(case when ${chapters.id} is not null and ${chapters.read} = 0 and ${IN_FOLLOWED_GROUP} then 1 else 0 end), 0)`
+export const UNREAD_COUNT = sql<number>`coalesce(sum(case when ${chapters.id} is not null and ${chapters.read} = 0 and ${IN_FOLLOWED_GROUP} then 1 else 0 end), 0)`
 
-const DOWNLOADED_COUNT = sql<number>`coalesce(sum(case when ${chapters.downloaded} = 1 and ${IN_FOLLOWED_GROUP} then 1 else 0 end), 0)`
+export const DOWNLOADED_COUNT = sql<number>`coalesce(sum(case when ${chapters.downloaded} = 1 and ${IN_FOLLOWED_GROUP} then 1 else 0 end), 0)`
 
 /** Ties the series to its chapter-filter setting, if it has one. */
-const FOLLOWED_SETTING_JOIN = sql`${settings.key} = ${CHAPTER_FILTERS_KEY_PREFIX} || ${manga.sourceId} || ':' || ${manga.url}`
+export const FOLLOWED_SETTING_JOIN = sql`${settings.key} = ${CHAPTER_FILTERS_KEY_PREFIX} || ${manga.sourceId} || ':' || ${manga.url}`
 
 const BOOKMARKED_COUNT = sql<number>`coalesce(sum(case when ${chapters.bookmarked} = 1 then 1 else 0 end), 0)`
 

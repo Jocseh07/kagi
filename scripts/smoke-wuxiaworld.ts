@@ -1,7 +1,7 @@
 /**
  * Exercises the WuxiaWorld source against the live API, outside a browser.
  *
- * Run: pnpm exec tsx scripts/smoke-wuxiaworld.ts
+ * Run: bunx tsx scripts/smoke-wuxiaworld.ts
  *
  * No DOMParser stand-in is needed. The source parses protobuf, not HTML, and
  * builds no markup of its own, so it behaves here exactly as it does in the

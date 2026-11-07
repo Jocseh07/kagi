@@ -1,7 +1,7 @@
 /**
  * Exercises the Mangadot source against the live API, outside a browser.
  *
- * Run: pnpm exec tsx scripts/smoke-mangadot.ts
+ * Run: bunx tsx scripts/smoke-mangadot.ts
  *
  * No DOMParser stand-in is needed here — unlike Asura, Mangadot sends plain
  * text descriptions rather than HTML fragments, so the source never parses any.

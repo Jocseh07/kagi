@@ -26,15 +26,20 @@
  */
 
 import { createFileRoute } from '@tanstack/react-router'
+import * as Effect from 'effect/Effect'
 import { sql } from 'drizzle-orm'
 
 import { syncFacts } from '@/lib/db/sync-schema'
 import { MAX_PUSH_BATCH, isSyncFact } from '@/lib/sync/protocol'
 import type { PushRequest, PushResponse, SyncFact } from '@/lib/sync/protocol'
-import { SyncError, requireUserId, respondTo } from '@/server/auth'
-import { currentSeq, reserveSeqs, syncDb } from '@/server/db'
+import { currentSeq, reserveSeqs } from '@/server/db'
+import { Auth } from '@/server/effect/auth'
+import { Database } from '@/server/effect/database'
+import type { SyncDb } from '@/server/effect/database'
+import { attempt, fail } from '@/server/effect/errors'
+import { runServer } from '@/server/effect/run'
+import { respondTo } from '@/server/errors'
 import { requireSyncEntitled } from '@/server/polar'
-import type { SyncDb } from '@/server/db'
 
 /**
  * Facts per statement.
@@ -57,35 +62,34 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
   return groups
 }
 
-async function push(request: Request): Promise<PushResponse> {
-  const userId = await requireUserId(request)
-  const db = syncDb()
-  await requireSyncEntitled(db, userId)
+const push = Effect.fn('sync.push')(function* (request: Request) {
+  const auth = yield* Auth
+  const db = yield* Database
+  const userId = yield* auth.requireUserId(request)
+  yield* requireSyncEntitled(userId)
 
-  const body = (await request.json().catch(() => undefined)) as
-    | Partial<PushRequest>
-    | undefined
+  const body = yield* attempt(
+    () => request.json().catch(() => undefined) as Promise<Partial<PushRequest> | undefined>,
+  )
   const incoming = Array.isArray(body?.facts) ? body.facts : null
-  if (!incoming) {
-    throw new SyncError(400, 'Expected a `facts` array.')
-  }
+  if (!incoming) return yield* fail(400, 'Expected a `facts` array.')
   if (incoming.length > MAX_PUSH_BATCH) {
-    throw new SyncError(413, `At most ${MAX_PUSH_BATCH} facts per push.`)
+    return yield* fail(413, `At most ${MAX_PUSH_BATCH} facts per push.`)
   }
   if (incoming.length === 0) {
     // Nothing to write, so nothing is reserved: bumping the counter here would
     // make every idle poll a write.
-    return { seq: await currentSeq(db, userId), applied: 0 }
+    return { seq: yield* currentSeq(userId), applied: 0 } satisfies PushResponse
   }
 
   for (const fact of incoming) {
-    if (!isSyncFact(fact)) throw new SyncError(400, 'Malformed fact in batch.')
+    if (!isSyncFact(fact)) return yield* fail(400, 'Malformed fact in batch.')
   }
 
   // One sequence per fact, reserved in a single statement. Sharing one value
   // across the batch would make the batch indivisible, and a pull that ran out
   // of budget inside such a group could not resume without skipping the rest.
-  const top = await reserveSeqs(db, userId, incoming.length)
+  const top = yield* reserveSeqs(userId, incoming.length)
   let seq = top - incoming.length
 
   const rows = incoming.map((fact: SyncFact) => {
@@ -102,40 +106,41 @@ async function push(request: Request): Promise<PushResponse> {
     }
   })
 
-  const statements: Statement[] = chunk(rows, ROWS_PER_STATEMENT).map(
-    (group) =>
-      db
-        .insert(syncFacts)
-        .values(group)
-        .onConflictDoUpdate({
-          target: [syncFacts.userId, syncFacts.kind, syncFacts.key],
-          set: {
-            gen: sql`excluded."gen"`,
-            val: sql`excluded."val"`,
-            state: sql`excluded."state"`,
-            payload: sql`excluded."payload"`,
-            // Only moves when the fact does. A sequence handed to a fact that
-            // was refused would drag every peer back over a range holding
-            // nothing they have not already seen.
-            seq: sql`excluded."seq"`,
-          },
-          where: sql`excluded."gen" > ${syncFacts.gen} or (excluded."gen" = ${syncFacts.gen} and excluded."val" > ${syncFacts.val})`,
-        }) as unknown as Statement,
-  )
+  yield* db.query(async (c) => {
+    const statements: Statement[] = chunk(rows, ROWS_PER_STATEMENT).map(
+      (group) =>
+        c
+          .insert(syncFacts)
+          .values(group)
+          .onConflictDoUpdate({
+            target: [syncFacts.userId, syncFacts.kind, syncFacts.key],
+            set: {
+              gen: sql`excluded."gen"`,
+              val: sql`excluded."val"`,
+              state: sql`excluded."state"`,
+              payload: sql`excluded."payload"`,
+              // Only moves when the fact does. A sequence handed to a fact that
+              // was refused would drag every peer back over a range holding
+              // nothing they have not already seen.
+              seq: sql`excluded."seq"`,
+            },
+            where: sql`excluded."gen" > ${syncFacts.gen} or (excluded."gen" = ${syncFacts.gen} and excluded."val" > ${syncFacts.val})`,
+          }) as unknown as Statement,
+    )
+    if (statements.length > 0) {
+      await c.batch(statements as [Statement, ...Statement[]])
+    }
+  })
 
-  if (statements.length > 0) {
-    await db.batch(statements as [Statement, ...Statement[]])
-  }
-
-  return { seq: top, applied: incoming.length }
-}
+  return { seq: top, applied: incoming.length } satisfies PushResponse
+})
 
 export const Route = createFileRoute('/api/sync/push')({
   server: {
     handlers: {
       POST: async ({ request }) => {
         try {
-          return Response.json(await push(request))
+          return Response.json(await runServer(push(request)))
         } catch (error) {
           return respondTo(error)
         }

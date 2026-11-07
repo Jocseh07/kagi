@@ -1,3 +1,4 @@
+import { parseDocument } from '../../text/document'
 import { DirectFetchTransport, RateLimiter } from '../../transport/direct-fetch'
 import type { HttpTransport } from '../../transport/types'
 import type {
@@ -11,6 +12,7 @@ import type {
   SManga,
   Source,
 } from '../types'
+import { appOrigin } from '../app-origin'
 
 /** Where the site lives, and what "open in browser" must point at. */
 const SITE_URL = 'https://mangakatana.com'
@@ -34,12 +36,12 @@ const ICON_URL =
  */
 function resolveApiBase(): string {
   if (typeof location === 'undefined') return SITE_URL
-  return new URL('/mangakatana', location.origin).toString()
+  return new URL('/mangakatana', appOrigin()).toString()
 }
 
 function resolveCdnBase(): string | null {
   if (typeof location === 'undefined') return null
-  return new URL('/katanacdn', location.origin).toString()
+  return new URL('/katanacdn', appOrigin()).toString()
 }
 
 /** The site publishes no limit. Two a second, matching the other scrapers. */
@@ -76,6 +78,61 @@ const CHAPTER_COUNT_VALUES = [
   ['150+', '150'],
   ['200+', '200'],
 ] as const
+
+const GENRE_VALUES = [
+  ['4 koma', '4-koma'],
+  ['Action', 'action'],
+  ['Adult', 'adult'],
+  ['Adventure', 'adventure'],
+  ['Artbook', 'artbook'],
+  ['Award winning', 'award-winning'],
+  ['Comedy', 'comedy'],
+  ['Cooking', 'cooking'],
+  ['Doujinshi', 'doujinshi'],
+  ['Drama', 'drama'],
+  ['Ecchi', 'ecchi'],
+  ['Erotica', 'erotica'],
+  ['Fantasy', 'fantasy'],
+  ['Gender Bender', 'gender-bender'],
+  ['Gore', 'gore'],
+  ['Harem', 'harem'],
+  ['Historical', 'historical'],
+  ['Horror', 'horror'],
+  ['Isekai', 'isekai'],
+  ['Josei', 'josei'],
+  ['Loli', 'loli'],
+  ['Manhua', 'manhua'],
+  ['Manhwa', 'manhwa'],
+  ['Martial Arts', 'martial-arts'],
+  ['Mecha', 'mecha'],
+  ['Medical', 'medical'],
+  ['Music', 'music'],
+  ['Mystery', 'mystery'],
+  ['One shot', 'one-shot'],
+  ['Overpowered MC', 'overpowered-mc'],
+  ['Psychological', 'psychological'],
+  ['Reincarnation', 'reincarnation'],
+  ['Romance', 'romance'],
+  ['School Life', 'school-life'],
+  ['Sci-fi', 'sci-fi'],
+  ['Seinen', 'seinen'],
+  ['Sexual violence', 'sexual-violence'],
+  ['Shota', 'shota'],
+  ['Shoujo', 'shoujo'],
+  ['Shoujo Ai', 'shoujo-ai'],
+  ['Shounen', 'shounen'],
+  ['Shounen Ai', 'shounen-ai'],
+  ['Slice of Life', 'slice-of-life'],
+  ['Sports', 'sports'],
+  ['Super power', 'super-power'],
+  ['Supernatural', 'supernatural'],
+  ['Survival', 'survival'],
+  ['Time Travel', 'time-travel'],
+  ['Tragedy', 'tragedy'],
+  ['Webtoon', 'webtoon'],
+  ['Yaoi', 'yaoi'],
+  ['Yuri', 'yuri'],
+] as const satisfies readonly (readonly [string, string])[]
 
 /**
  * The page-image array in a chapter's inline script.
@@ -273,6 +330,15 @@ export class MangaKatana implements Source {
       sortFilter(),
       selectFilter('Status', STATUS_VALUES),
       selectFilter('Chapters', CHAPTER_COUNT_VALUES),
+      {
+        type: 'group',
+        name: 'Genres',
+        state: GENRE_VALUES.map(([label]) => ({
+          type: 'checkbox' as const,
+          name: label,
+          state: false,
+        })),
+      },
     ]
   }
 
@@ -323,7 +389,7 @@ export class MangaKatana implements Source {
     signal?: AbortSignal,
   ): Promise<Document> {
     const res = await this.http.fetch({ url, signal })
-    return new DOMParser().parseFromString(await res.text(), 'text/html')
+    return parseDocument(await res.text(), 'text/html')
   }
 }
 
@@ -514,6 +580,18 @@ function applyFilters(url: URL, filters: FilterList): void {
         const value = table[filter.state]?.[1]
         if (!value) break
         url.searchParams.set(filter.name === 'Status' ? 'status' : 'chapters', value)
+        break
+      }
+      case 'group': {
+        const slugs: string[] = []
+        for (const child of filter.state) {
+          if (child.type !== 'checkbox' || !child.state) continue
+          const slug = GENRE_VALUES.find(([label]) => label === child.name)?.[1]
+          if (slug) slugs.push(slug)
+        }
+        if (slugs.length === 0) break
+        url.searchParams.set('include', slugs.join('_'))
+        url.searchParams.set('include_mode', 'and')
         break
       }
     }

@@ -24,6 +24,8 @@ import {
   retryItem,
 } from '@/lib/download/queue-repository'
 import type { QueueItem, QueueSummary } from '@/lib/download/queue-types'
+import { describeError } from '@/lib/ui/describe-error'
+import { notify } from '@/lib/ui/toast'
 
 export const Route = createFileRoute('/downloads/')({
   component: DownloadsPage,
@@ -110,6 +112,8 @@ function DownloadsPage() {
       }
       await reorderItem(item.id, position)
     },
+    // Told about by name: the row it failed on may have moved or gone.
+    onError: (error, { item }) => notify.error(`Could not update ${item.chapterName}`, error),
     onSettled: invalidate,
   })
 
@@ -124,7 +128,7 @@ function DownloadsPage() {
 
       {status === 'error' ? (
         <ErrorPanel
-          error={error ?? new Error('The library database is unavailable.')}
+          error={error}
         />
       ) : queue.isError ? (
         <ErrorPanel error={queue.error} onRetry={() => void queue.refetch()} />
@@ -143,10 +147,9 @@ function DownloadsPage() {
             onClearAll={() => bulk.mutate('clear-all')}
           />
 
-          {(bulk.isError || single.isError) && (
+          {bulk.isError && (
             <p className="text-xs text-destructive">
-              Could not update the queue:{' '}
-              {messageOf(bulk.error ?? single.error)}
+              Could not update the queue. {describeError(bulk.error)}
             </p>
           )}
 
@@ -183,7 +186,7 @@ function EmptyQueue() {
     <EmptyState
       icon={Download}
       title="Nothing queued"
-      description="Add chapters from a series page and they are downloaded here, one source at a time, so nothing trips the site's rate limit."
+      description="Download chapters from a series page to read them offline."
       action={
         <Button asChild variant="outline" size="sm">
           <Link to="/library">Open library</Link>
@@ -214,6 +217,3 @@ function QueueSkeleton() {
   )
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : 'unknown error'
-}

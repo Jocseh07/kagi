@@ -1,0 +1,187 @@
+diff --git a/crates/rune/src/tok.rs b/crates/rune/src/tok.rs
+--- a/crates/rune/src/tok.rs
++++ b/crates/rune/src/tok.rs
+@@ -27,6 +27,8 @@
+     #[default]
+     Sans,
+     Mono,
++    /// The application's runtime-selected reading family.
++    Reader,
+     /// A literal font family name, not a CSS list. Falls back to the sans slot if missing.
+     Named(&'static str),
+     /// The platform's monospaced UI font, loaded from the system on first use, never bundled:
+diff --git a/crates/rune/src/text.rs b/crates/rune/src/text.rs
+--- a/crates/rune/src/text.rs
++++ b/crates/rune/src/text.rs
+@@ -1138,6 +1138,85 @@
+ 
+ // ---------------------------------------------------------------------------------------------
+ 
++/// An owned font collection prepared on a worker and installed atomically by a transaction.
++pub struct FontSet {
++    collection: Collection,
++    sans: String,
++    mono: String,
++    reader: String,
++    font_files: LoadedFiles,
++    symbol_families: Vec<&'static str>,
++    emoji: Option<&'static str>,
++    system_mono: Vec<String>,
++    math: Vec<&'static str>,
++    scripts: u64,
++}
++
++impl FontSet {
++    /// Registers decoded OpenType bytes without retaining static buffers or doing UI-thread IO.
++    pub fn new(fonts: Vec<Arc<[u8]>>, sans: String, mono: String, reader: String) -> Result<Self, String> {
++        let mut collection = Collection::new(CollectionOptions { shared: false, system_fonts: false });
++        let mut registered = Vec::new();
++        for data in DEFAULT_FONTS {
++            registered.extend(collection.register_fonts(Blob::new(Arc::new(data)), None).into_iter().map(|(id, _)| id));
++        }
++        for data in fonts {
++            let added = collection.register_fonts(Blob::new(Arc::new(data)), None);
++            if added.is_empty() { return Err("A font contains no supported OpenType faces".into()); }
++            registered.extend(added.into_iter().map(|(id, _)| id));
++        }
++        for name in [&sans, &mono, &reader] {
++            let first = name.split(',').next().unwrap_or(name).trim().trim_matches(['\'', '"']);
++            if collection.family_id(first).is_none() {
++                return Err(format!("Font family is unavailable: {first}"));
++            }
++        }
++        let mut font_files = LoadedFiles::new();
++        register_cjk_fallbacks(&mut collection, &mut font_files, &registered, (&sans, &mono));
++        let symbol_families = load_families(&mut collection, SYMBOL_FONT_FILES, SYMBOL_FAMILIES);
++        let emoji = symbol_families.iter().copied().find(|family| family.contains("Emoji"));
++        let system_mono = load_system_mono(&mut collection, &mut font_files);
++        let math = load_families(&mut collection, fallback::MATH_FONT_FILES, fallback::MATH_FAMILIES);
++        let mut scripts = 0;
++        for (index, fonts) in fallback::SCRIPT_FONTS.iter().enumerate() {
++            register_script_fallbacks(&mut collection, &mut font_files, fonts);
++            scripts |= 1 << index;
++        }
++        Ok(Self { collection, sans, mono, reader, font_files, symbol_families, emoji, system_mono, math, scripts })
++    }
++}
++
++#[derive(Clone)]
++pub(crate) struct FontSetRequest(pub(crate) Arc<std::sync::Mutex<Option<FontSet>>>);
++
++impl std::fmt::Debug for FontSetRequest {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("FontSetRequest") }
++}
++
++impl TextSystem {
++    pub(crate) fn install_font_set(&mut self, fonts: FontSet) {
++        self.font_cx = FontContext { collection: fonts.collection, source_cache: SourceCache::default() };
++        self.layout_cx = LayoutContext::new();
++        self.scale_cx = ScaleContext::new();
++        self.sans = fonts.sans;
++        self.mono = fonts.mono;
++        self.reader = fonts.reader;
++        self.slot_system_mono = names_system_mono(&self.sans) || names_system_mono(&self.mono);
++        self.font_files = fonts.font_files;
++        self.symbol_families = fonts.symbol_families;
++        self.emoji = fonts.emoji;
++        self.system_mono = Some(fonts.system_mono);
++        self.math = Some(fonts.math);
++        self.scripts = fonts.scripts;
++        self.traks = Traks::new();
++        self.layouts.clear();
++        self.shapes.clear();
++        self.runs.clear();
++        self.primary_traks.clear();
++        self.generation = self.generation.wrapping_add(1);
++    }
++}
++
+ pub struct TextSystem {
+     font_cx: FontContext,
+     layout_cx: LayoutContext<Ink>,
+@@ -1150,6 +1229,7 @@
+     generation: u32,
+     pub sans: String,
+     pub mono: String,
++    reader: String,
+     symbol_families: Vec<&'static str>,
+     /// The colour emoji family among `symbol_families`.
+     emoji: Option<&'static str>,
+@@ -1440,6 +1520,7 @@
+             generation: 0,
+             sans: if cfg!(target_arch = "wasm32") { format!("{}, Inter", families.0) } else { families.0.to_owned() },
+             mono: if cfg!(target_arch = "wasm32") { format!("{}, IBM Plex Mono", families.1) } else { families.1.to_owned() },
++            reader: families.0.to_owned(),
+             symbol_families,
+             emoji,
+             math: None,
+@@ -1481,6 +1562,7 @@
+         let names = match family {
+             Family::Sans => named(&self.sans),
+             Family::Mono => named(&self.mono),
++            Family::Reader => named(&self.reader),
+             Family::Named(name) => std::iter::once(name.to_owned()).chain(named(&self.sans)).collect(),
+             Family::SystemMono => system.iter().cloned().chain(named(&self.mono)).collect(),
+         };
+@@ -1724,6 +1806,7 @@
+         let sans = match style.family {
+             Family::Sans => with_symbols(self.sans.as_str()),
+             Family::Mono => with_symbols(self.mono.as_str()),
++            Family::Reader => with_symbols(self.reader.as_str()),
+             Family::Named(name) => {
+                 let mut families = with_symbols(self.sans.as_str());
+                 families.insert(0, FontFamilyName::named(name));
+diff --git a/crates/rune/src/el_tx.rs b/crates/rune/src/el_tx.rs
+--- a/crates/rune/src/el_tx.rs
++++ b/crates/rune/src/el_tx.rs
+@@ -62,6 +62,7 @@
+     pub(crate) mods: crate::Mods,
+     pub(crate) srgb_blend: Option<bool>,
+     pub(crate) font_smoothing: Option<crate::text::FontSmoothing>,
++    pub(crate) font_set: Option<crate::text::FontSetRequest>,
+     pub(crate) blur: bool,
+     /// The text selection as the event arrived (`Tx::text_selection`).
+     pub(crate) selection: Option<Rc<crate::TextSelection>>,
+@@ -100,6 +101,12 @@
+ }
+ 
+ impl Tx {
++    /// Replaces the active font collection with one prepared off the UI thread.
++    pub fn replace_font_set(&mut self, fonts: crate::text::FontSet) {
++        self.font_set = Some(crate::text::FontSetRequest(std::sync::Arc::new(std::sync::Mutex::new(Some(fonts)))));
++        self.relayout = true;
++    }
++
+     /// Pick from the last presented frame, with the geometry and visibility rules of
+     /// [`Runtime::element_at`](crate::Runtime::element_at). Runs `f` after this handler,
+     /// before its view commit. Pass `PointerEvent::window_x` and `window_y`, not local points.
+diff --git a/crates/rune/src/runtime.rs b/crates/rune/src/runtime.rs
+--- a/crates/rune/src/runtime.rs
++++ b/crates/rune/src/runtime.rs
+@@ -1908,6 +1908,15 @@
+     /// memory clipboard at once. A secret clear drops an earlier secret copy not yet written.
+     fn latch_requests(&mut self, tx: &mut Tx) {
+         self.run_pick_reads(tx);
++        if let Some(request) = tx.font_set.take() {
++            if let Some(fonts) = request.0.lock().unwrap_or_else(|error| error.into_inner()).take() {
++                self.text.install_font_set(fonts);
++                self.node_caches.clear();
++                self.text.atlas.resident_caches.clear();
++                self.dirty = true;
++                self.relayout = true;
++            }
++        }
+         self.shell_request = self.shell_request.max(tx.shell.take());
+         self.minimize_request |= std::mem::take(&mut tx.minimize);
+         self.latch_playground(tx);
+diff --git a/crates/rune/src/runtime/action.rs b/crates/rune/src/runtime/action.rs
+--- a/crates/rune/src/runtime/action.rs
++++ b/crates/rune/src/runtime/action.rs
+@@ -164,6 +164,7 @@
+     tx.open_urls.extend(one.open_urls);
+     tx.srgb_blend = one.srgb_blend.or(tx.srgb_blend);
+     tx.font_smoothing = one.font_smoothing.or(tx.font_smoothing);
++    tx.font_set = one.font_set.or(tx.font_set.take());
+     tx.blur |= one.blur;
+     if one.select.is_some() {
+         tx.select = one.select;

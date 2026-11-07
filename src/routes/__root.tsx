@@ -7,11 +7,13 @@ import {
   createRootRouteWithContext,
   useRouterState,
 } from '@tanstack/react-router'
-import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ClerkProvider, useUser } from '@clerk/react'
+import { shadcn } from '@clerk/ui/themes'
 
 import { AppBottomNav } from '@/components/app-bottom-nav'
 import { AppHeader } from '@/components/app-header'
+import { DesktopNav } from '@/components/desktop-nav'
 import { IncognitoBanner } from '@/components/incognito-banner'
 import { InstallBanner } from '@/components/pwa/install-banner'
 import { NavigationProgress } from '@/components/navigation-progress'
@@ -19,6 +21,8 @@ import { OfflineBanner } from '@/components/offline-banner'
 import { PageBackProvider } from '@/components/page-back'
 import { Toaster } from '@/components/ui/sonner'
 import { useQueueRuntime } from '@/components/download/use-queue-runtime'
+import { startAdaptationRunner } from '@/lib/adapt/pipeline'
+import { supportsAdaptations } from '@/lib/adapt/store'
 import { DatabaseProvider } from '@/lib/db/provider'
 import { useDatabaseReady } from '@/lib/db/provider'
 import { dbKeys } from '@/lib/db/query-keys'
@@ -62,12 +66,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ],
     links: [
       { rel: 'stylesheet', href: appCss },
+      // The .ico is for browsers that skip the SVG; `sizes: 'any'` keeps it from outranking it.
+      { rel: 'icon', href: '/favicon.ico', sizes: 'any' },
       { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
-      // iOS before 16.4 reads no manifest, and without this it uses a
-      // screenshot of the page as the home screen icon. The 192 is scaled
-      // rather than a 180 of its own: it is already opaque with the glyph
-      // inset, so iOS's corner mask has nothing to cut into.
-      { rel: 'apple-touch-icon', href: '/icon-192.png' },
+      // iOS before 16.4 reads no manifest. A full-bleed opaque square, so iOS's own corner mask cuts nothing.
+      { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
       { rel: 'manifest', href: '/manifest.webmanifest' },
       // No source origin is preconnected. Every source is now reached through
       // a same-origin hop (see the proxy routes), whose connection is the one
@@ -107,7 +110,6 @@ function RootDocument({ children }: { children: ReactNode }) {
             <DatabaseProvider>{children}</DatabaseProvider>
           </Providers>
         </QueryClientProvider>
-        <UpdatePrompt />
         <Scripts />
       </body>
     </html>
@@ -121,7 +123,13 @@ function RootDocument({ children }: { children: ReactNode }) {
 function Providers({ children }: { children: ReactNode }) {
   if (!clerkPublishableKey) return children
   return (
-    <ClerkProvider publishableKey={clerkPublishableKey} afterSignOutUrl="/">
+    <ClerkProvider
+      publishableKey={clerkPublishableKey}
+      afterSignOutUrl="/"
+      // Clerk's own screens read our tokens, so they follow the theme picker
+      // and the light/dark switch without a second copy of either.
+      appearance={{ theme: shadcn }}
+    >
       {children}
     </ClerkProvider>
   )
@@ -142,6 +150,7 @@ function RootLayout() {
     <div className="flex h-full flex-col">
       <NavigationProgress />
       <DownloadRuntime />
+      <AdaptRuntime />
       {accountsEnabled ? <IdentityBridge /> : null}
       {accountsEnabled ? <SyncRuntime /> : null}
 
@@ -154,12 +163,16 @@ function RootLayout() {
         {/* Last of the three: offline and incognito are states to act on now,
             installing is an offer that can wait. */}
         {onWelcome ? null : <InstallBanner />}
+        <UpdatePrompt />
 
-        <main ref={setScrollElement} className="min-h-0 flex-1 overflow-y-auto">
-          <ScrollElementProvider value={scrollElement}>
-            <Outlet />
-          </ScrollElementProvider>
-        </main>
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <main ref={setScrollElement} className="min-h-0 flex-1 overflow-y-auto">
+            <ScrollElementProvider value={scrollElement}>
+              <Outlet />
+            </ScrollElementProvider>
+          </main>
+          {onWelcome ? null : <DesktopNav />}
+        </div>
 
         {/* Below `md` only; a row of its own under the scroller, so no page has
             to reserve space for it. */}
@@ -219,7 +232,7 @@ function IdentityBridge() {
  * connection returning), and renders nothing.
  *
  * App-wide rather than on a page, because the point is the arrival: a fresh
- * device lands on the library, and the library is what the run fills. Its own
+ * device lands on the home page, and the library behind it is what the run fills. Its own
  * component for the same reason `DownloadRuntime` is — the run publishes state
  * as it goes, and subscribing from the layout would re-render the header and
  * the whole routed page with it. Rendered only when a Clerk key is configured;
@@ -240,6 +253,18 @@ function SyncRuntime() {
  * from the layout would re-render the header and the whole routed page on every
  * tick. Here the tick re-renders this and nothing else.
  */
+/** Resumes manga adaptations left mid-chapter by an earlier session. */
+function AdaptRuntime() {
+  const ready = useDatabaseReady()
+  const queryClient = useQueryClient()
+
+  useEffect(() => {
+    if (ready && supportsAdaptations()) startAdaptationRunner(queryClient)
+  }, [ready, queryClient])
+
+  return null
+}
+
 function DownloadRuntime() {
   const ready = useDatabaseReady()
 

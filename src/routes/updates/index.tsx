@@ -10,13 +10,7 @@ import {
 import { UpdateRunner } from '@/components/updates/update-runner'
 import { useUpdateRuntime } from '@/components/updates/use-update-runtime'
 import { PageContainer } from '@/components/page-container'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Combobox } from '@/components/ui/combobox'
 import { ErrorPanel } from '@/components/ui/error-panel'
 import { listCategories } from '@/lib/db/categories'
 import { countFavorites } from '@/lib/db/library'
@@ -36,6 +30,7 @@ import {
   updateManager,
   updatePrefsQueryKey,
 } from '@/lib/updates/update-manager'
+import { describeError } from '@/lib/ui/describe-error'
 
 export const Route = createFileRoute('/updates/')({
   component: UpdatesPage,
@@ -68,6 +63,17 @@ function UpdatesPage() {
     enabled: ready,
     staleTime: 0,
   })
+
+  const categoryOptions = useMemo(
+    () => [
+      { value: ALL_CATEGORIES, label: 'All categories' },
+      ...(categories.data ?? []).map((category) => ({
+        value: category.id,
+        label: category.name,
+      })),
+    ],
+    [categories.data],
+  )
 
   const favorites = useQuery({
     queryKey: [...dbKeys.library, 'count'],
@@ -159,30 +165,22 @@ function UpdatesPage() {
           ready
             ? null
             : status === 'loading'
-              ? 'Waiting for the library database…'
-              : (error?.message ?? 'The library database is unavailable.')
+              ? 'Loading…'
+              : describeError(error)
         }
         lastRunAt={lastRun.data ?? null}
         preview={preview.data ?? null}
         due={due}
         scope={
-          <Select
+          <Combobox
+            label="Categories to check"
+            className="w-40"
+            options={categoryOptions}
             value={categoryId ?? ALL_CATEGORIES}
             disabled={!ready || categories.isPending}
-            onValueChange={setScopeOverride}
-          >
-            <SelectTrigger aria-label="Categories to check" className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_CATEGORIES}>All categories</SelectItem>
-              {(categories.data ?? []).map((category) => (
-                <SelectItem key={category.id} value={category.id}>
-                  {category.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            searchPlaceholder="Search categories"
+            onChange={setScopeOverride}
+          />
         }
         onRun={() => void updateManager.runUpdate({ categoryId })}
         onCancel={() => updateManager.cancel()}
@@ -194,11 +192,11 @@ function UpdatesPage() {
 
       {status === 'error' ? (
         <ErrorPanel
-          error={error ?? new Error('The library database is unavailable.')}
+          error={error}
         />
       ) : feed.isError ? (
         <ErrorPanel error={feed.error} onRetry={() => void feed.refetch()} />
-      ) : feed.isPending ? (
+      ) : feed.isPending || favorites.isPending ? (
         <UpdateFeedSkeleton />
       ) : days.length === 0 ? (
         <EmptyUpdates hasFavorites={(favorites.data ?? 0) > 0} />

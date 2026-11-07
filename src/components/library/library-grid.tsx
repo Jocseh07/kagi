@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { Link } from '@tanstack/react-router'
-import { Check, Download } from 'lucide-react'
+import { Check, Download, Sparkles } from 'lucide-react'
 
 import {
   MangaCover,
@@ -9,7 +9,11 @@ import {
   mangaSlug,
 } from '@/components/manga-grid'
 import { MangaListRow } from '@/components/manga-list-row'
+import { CoverBadges } from '@/components/library/cover-badges'
+import { adaptedNovelKey, useAdaptedNovels } from '@/lib/adapt/use-adaptation'
 import type { LibraryCard as LibraryCardEntry } from '@/lib/db/library'
+import { sourceNameOf } from '@/lib/sources/catalog'
+import { displayTitle } from '@/lib/sources/display-title'
 import { cn } from '@/lib/utils'
 
 export function LibraryGrid({
@@ -26,6 +30,7 @@ export function LibraryGrid({
   onSelect(index: number, shiftKey: boolean): void
 }) {
   const selecting = selected.size > 0
+  const adaptedNovels = useAdaptedNovels()
 
   return (
     <VirtualMangaLayout
@@ -38,6 +43,7 @@ export function LibraryGrid({
         const props = {
           entry,
           selected: selected.has(entry.id),
+          adapted: adaptedNovels.has(adaptedNovelKey(entry.sourceId, entry.url)),
           selecting,
           onSelect: (shiftKey: boolean) => onSelect(index, shiftKey),
         }
@@ -54,6 +60,7 @@ export function LibraryGrid({
 interface LibraryItemProps {
   entry: LibraryCardEntry
   selected: boolean
+  adapted: boolean
   selecting: boolean
   onSelect(shiftKey: boolean): void
 }
@@ -73,7 +80,7 @@ function entrySlug(entry: LibraryCardEntry): string {
   })
 }
 
-function LibraryCard({ entry, selected, selecting, onSelect }: LibraryItemProps) {
+function LibraryCard({ entry, selected, adapted, selecting, onSelect }: LibraryItemProps) {
   const selection = useSelectionGesture(selecting, onSelect)
 
   return (
@@ -87,26 +94,20 @@ function LibraryCard({ entry, selected, selecting, onSelect }: LibraryItemProps)
       <div className="relative">
         <MangaCover
           url={entry.thumbnailUrl ?? undefined}
-          title={entry.title}
           className={cn(
             'transition-colors group-hover:border-primary/60 group-focus-visible:border-primary',
             selected && 'border-primary ring-2 ring-primary',
           )}
         />
 
-        <div className="pointer-events-none absolute top-1 left-1 flex overflow-hidden rounded-md">
-          {entry.unreadCount > 0 && (
-            <span className="bg-primary px-1.5 py-0.5 text-[0.7rem] font-semibold text-primary-foreground">
-              {entry.unreadCount}
-            </span>
-          )}
-          {entry.downloadedCount > 0 && (
-            <span className="flex items-center gap-0.5 bg-secondary px-1.5 py-0.5 text-[0.7rem] font-semibold text-secondary-foreground">
-              <Download className="size-2.5" />
-              {entry.downloadedCount}
-            </span>
-          )}
-        </div>
+        <CoverBadges unread={entry.unreadCount} saved={entry.downloadedCount} />
+
+        {adapted && (
+          <span className="pointer-events-none absolute top-1 right-1 flex items-center rounded-sm bg-secondary px-1.5 py-0.5 text-secondary-foreground">
+            <Sparkles className="size-2.5" />
+            <span className="sr-only">Adapted</span>
+          </span>
+        )}
 
         {selected && (
           <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-primary/25">
@@ -117,8 +118,8 @@ function LibraryCard({ entry, selected, selecting, onSelect }: LibraryItemProps)
         )}
       </div>
 
-      <p className="mt-2 line-clamp-2 text-[0.8rem] leading-snug text-foreground/90 transition-colors group-hover:text-foreground">
-        {entry.title}
+      <p className="mt-2 line-clamp-2 text-tile leading-snug text-foreground/90 transition-colors group-hover:text-foreground">
+        {displayTitle(entry.title, entrySlug(entry))}
       </p>
     </Link>
   )
@@ -134,6 +135,7 @@ function LibraryCard({ entry, selected, selecting, onSelect }: LibraryItemProps)
 function LibraryListRow({
   entry,
   selected,
+  adapted,
   selecting,
   onSelect,
 }: LibraryItemProps) {
@@ -149,31 +151,34 @@ function LibraryListRow({
     >
       <MangaListRow
         thumbnailUrl={entry.thumbnailUrl ?? undefined}
-        title={entry.title}
+        title={displayTitle(entry.title, entrySlug(entry))}
         selected={selected}
-        // Nothing to say means no second line at all: the title simply
-        // centres in the row, rather than being padded out with filler.
         meta={
-          selected || entry.unreadCount > 0 || entry.downloadedCount > 0 ? (
-            <>
-              {selected && (
-                <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                  <Check className="size-2.5" />
-                </span>
-              )}
-              {entry.unreadCount > 0 && (
-                <span className="rounded-sm bg-primary px-1 py-px font-semibold text-primary-foreground tabular-nums">
-                  {entry.unreadCount} unread
-                </span>
-              )}
-              {entry.downloadedCount > 0 && (
-                <span className="flex items-center gap-0.5 rounded-sm bg-secondary px-1 py-px font-semibold text-secondary-foreground tabular-nums">
-                  <Download className="size-2.5" />
-                  {entry.downloadedCount}
-                </span>
-              )}
-            </>
-          ) : undefined
+          <>
+            {selected && (
+              <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                <Check className="size-2.5" />
+              </span>
+            )}
+            {entry.unreadCount > 0 && (
+              <span className="shrink-0 rounded-sm bg-primary px-1 py-px font-semibold text-primary-foreground tabular-nums">
+                {entry.unreadCount} unread
+              </span>
+            )}
+            {entry.downloadedCount > 0 && (
+              <span className="flex shrink-0 items-center gap-0.5 rounded-sm bg-secondary px-1 py-px font-semibold text-secondary-foreground tabular-nums">
+                <Download className="size-2.5" />
+                {entry.downloadedCount}
+              </span>
+            )}
+            {adapted && (
+              <span className="flex shrink-0 items-center gap-0.5 rounded-sm bg-secondary px-1 py-px font-semibold text-secondary-foreground">
+                <Sparkles className="size-2.5" />
+                Adapted
+              </span>
+            )}
+            <span className="min-w-0 truncate">{sourceNameOf(entry.sourceId)}</span>
+          </>
         }
       />
     </Link>

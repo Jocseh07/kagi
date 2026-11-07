@@ -17,7 +17,14 @@ import { ReaderPage } from './reader-page'
 import { getPageAspect } from './use-image-preload'
 
 export interface ContinuousViewerHandle {
-  scrollTo(pageIndex: number): void
+  scrollTo(pageIndex: number, offset?: number): void
+  position(): StripPosition | null
+}
+
+interface StripPosition {
+  pageIndex: number
+  /** How far into the page the anchor sits, as a share of its height. */
+  offset: number
 }
 
 interface ContinuousViewerProps {
@@ -25,12 +32,17 @@ interface ContinuousViewerProps {
   scrollRef: RefObject<HTMLDivElement | null>
   /** How far into the chapter the reader has scrolled. */
   onPositionChange(pageIndex: number): void
+  /** Fired once scrolling has stopped for `SCROLL_SETTLE_MS`. */
+  onScrollSettle?(): void
   footer?: ReactNode
   ref?: Ref<ContinuousViewerHandle>
 }
 
 /** How far down the viewport a page has to reach to count as the current one. */
 const CURRENT_PAGE_ANCHOR = 0.35
+
+/** Quiet time after the last scroll before the position counts as settled. */
+const SCROLL_SETTLE_MS = 500
 
 /** Pages ahead and behind that stay mounted, so a scroll never shows a gap. */
 const OVERSCAN = 3
@@ -71,15 +83,12 @@ const PLACEHOLDER_WINDOW_LIMIT = 2
  * for the old viewport and corrected itself, loudly, on the scroll that
  * reached it. The width comes from the column that is actually drawn, and the
  * placeholder from the screen, which a full-screen transition leaves alone.
- *
- * One chapter at a time. The strip ends where the chapter does, and the reader
- * around it offers the next one as a button rather than laying it out below —
- * so a scroll never changes which chapter is being read.
  */
 export function ContinuousViewer({
   pages,
   scrollRef,
   onPositionChange,
+  onScrollSettle,
   footer,
   ref,
 }: ContinuousViewerProps) {
@@ -93,12 +102,17 @@ export function ContinuousViewer({
   const contentWidth = measuredWidth || MAX_CONTENT_WIDTH
   const placeholderHeight = usePlaceholderHeight()
   /**
-   * The last page handed to `onPositionChange`, so a scroll that stays on the
-   * same page reports nothing. Null rather than page zero: the first
+   * The last position handed to `onPositionChange`, so a scroll that stays on
+   * the same page reports nothing. Null rather than page zero: the first
    * measurement after mount has to get through, or a restored reading position
    * would never be announced.
    */
   const lastReported = useRef<number | null>(null)
+  const positionRef = useRef<StripPosition | null>(null)
+  /** When the reader last scrolled by hand; a relayout then is left alone. */
+  const userScrollAt = useRef(0)
+  /** Where the last programmatic scroll was aimed, so its event is not taken for the reader's. */
+  const aimedTop = useRef<number | null>(null)
 
   const virtualizer = useVirtualizer<HTMLElement, Element>({
     count: pages.length,
@@ -112,8 +126,8 @@ export function ContinuousViewer({
       },
       [pages, contentWidth, placeholderHeight],
     ),
-    // Keyed by image url as well as position, so a page height measured in one
-    // chapter is never reused for the page that replaces it in the next.
+    // Keyed by image url as well as position, so a measured height is never
+    // reused for a different image at the same index.
     getItemKey: useCallback(
       (index: number) => {
         const page = pages[index]
@@ -135,13 +149,31 @@ export function ContinuousViewer({
    * measurement, which only replaces the estimate the strip already had.
    */
   const lastWidth = useRef(0)
+  const scrollToSpot = useCallback(
+    (pageIndex: number, offset: number) => {
+      const item = virtualizer.measurementsCache[pageIndex]
+      if (!item) return
+      // Lands the saved point back under the anchor it was measured at.
+      const viewport = scrollRef.current?.clientHeight ?? 0
+      const top = Math.max(0, item.start + offset * item.size - viewport * CURRENT_PAGE_ANCHOR)
+      aimedTop.current = top
+      virtualizer.scrollToOffset(top, { align: 'start' })
+    },
+    [virtualizer, scrollRef],
+  )
+
   useLayoutEffect(() => {
     if (measuredWidth === 0) return
     const previous = lastWidth.current
     lastWidth.current = measuredWidth
     if (previous === 0 || previous === measuredWidth) return
+    // The spot is read before the heights are dropped: it is the page the
+    // reader was looking at, and the old pixel offset no longer points there.
+    const spot = positionRef.current
     virtualizer.measure()
-  }, [measuredWidth, virtualizer])
+    if (!spot || performance.now() - userScrollAt.current < SCROLL_SETTLE_MS) return
+    scrollToSpot(spot.pageIndex, spot.offset)
+  }, [measuredWidth, virtualizer, scrollToSpot])
 
   /**
    * Which page the reader is on, from the scroll position.
@@ -157,7 +189,7 @@ export function ContinuousViewer({
     if (!container || pages.length === 0) return
 
     // Only the frame-to-frame repeats are worth suppressing. Anything that
-    // re-runs this effect — another chapter's pages, a remount — has moved the
+    // re-runs this effect — a new page list, a remount — has moved the
     // strip under the reader, so the next measurement is a fresh one and has to
     // get through whatever it turns out to be.
     lastReported.current = null
@@ -184,6 +216,7 @@ export function ContinuousViewer({
     let lastTop: number | null = null
 
     let frame = 0
+    let settle: ReturnType<typeof setTimeout> | undefined
     const measure = () => {
       frame = 0
       const top = container.scrollTop
@@ -191,21 +224,38 @@ export function ContinuousViewer({
       lastTop = top
 
       const anchor = top + clientHeight * CURRENT_PAGE_ANCHOR
-      let current = 0
-      for (const item of virtualizer.getVirtualItems()) {
-        if (item.start > anchor) break
-        current = item.index
+      let current: { index: number; start: number; size: number } | null =
+        null
+      for (const virtual of virtualizer.getVirtualItems()) {
+        if (virtual.start > anchor) break
+        current = { index: virtual.index, start: virtual.start, size: virtual.size }
+      }
+      if (!current) return
+      const pageIndex = current.index
+      positionRef.current = {
+        pageIndex,
+        offset:
+          current.size > 0
+            ? Math.min(1, Math.max(0, (anchor - current.start) / current.size))
+            : 0,
       }
       // This runs on every scroll frame, but the anchor only crosses a page
       // boundary occasionally. Announcing an unchanged position would re-render
       // the reader around this for nothing, so only a real move is reported.
-      if (lastReported.current === current) return
-      lastReported.current = current
-      onPositionChange(current)
+      if (lastReported.current === pageIndex) return
+      lastReported.current = pageIndex
+      onPositionChange(pageIndex)
     }
 
     const onScroll = () => {
+      const aimed = aimedTop.current
+      aimedTop.current = null
+      if (aimed === null || Math.abs(container.scrollTop - aimed) > 2) {
+        userScrollAt.current = performance.now()
+      }
       if (!frame) frame = requestAnimationFrame(measure)
+      clearTimeout(settle)
+      settle = setTimeout(() => onScrollSettle?.(), SCROLL_SETTLE_MS)
     }
 
     container.addEventListener('scroll', onScroll, { passive: true })
@@ -215,8 +265,15 @@ export function ContinuousViewer({
       container.removeEventListener('scroll', onScroll)
       observer?.disconnect()
       if (frame) cancelAnimationFrame(frame)
+      clearTimeout(settle)
     }
-  }, [scrollRef, onPositionChange, virtualizer, pages])
+  }, [
+    scrollRef,
+    onPositionChange,
+    onScrollSettle,
+    virtualizer,
+    pages.length,
+  ])
 
   useImperativeHandle(
     ref,
@@ -224,20 +281,26 @@ export function ContinuousViewer({
       // The strip only mounts the pages near the viewport, so a jump goes
       // through the virtualizer rather than looking for an element that may
       // not exist yet.
-      scrollTo: (pageIndex: number) => {
-        virtualizer.scrollToIndex(pageIndex, { align: 'start' })
+      scrollTo: (pageIndex: number, offset = 0) => {
+        if (pageIndex < 0 || pageIndex >= pages.length) return
+        if (offset <= 0) {
+          virtualizer.scrollToIndex(pageIndex, { align: 'start' })
+          return
+        }
+        scrollToSpot(pageIndex, offset)
       },
+      position: () => positionRef.current,
     }),
-    [virtualizer],
+    [virtualizer, pages.length, scrollToSpot],
   )
 
   return (
     <div
       ref={scrollRef}
       tabIndex={-1}
-      className="relative h-full overflow-y-auto overscroll-contain outline-none"
+      className="relative h-full overflow-y-auto overscroll-contain outline-none [overflow-anchor:none] [scrollbar-width:none]"
     >
-      <div ref={setContentNode} className="mx-auto w-full max-w-3xl">
+      <div ref={setContentNode} className="mx-auto w-full max-w-3xl pb-[50dvh]">
         <VirtualList virtualizer={virtualizer} scrollMargin={0}>
           {(index) => {
             const page = pages[index]

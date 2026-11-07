@@ -4,14 +4,21 @@ import { dbKeys } from '@/lib/db/query-keys'
 import { unsaveAllChapters } from '@/lib/offline/save-chapter'
 import { readStorageBreakdown } from '@/lib/storage/breakdown'
 import type { StorageBucketId } from '@/lib/storage/breakdown'
-import { clearAppShell, clearOtherData, eraseLibrary } from '@/lib/storage/clear'
+import {
+  clearAdaptations,
+  clearAppShell,
+  clearImportedBooks,
+  clearOtherData,
+  eraseLibrary,
+} from '@/lib/storage/clear'
 
 /**
  * Reads the breakdown and clears any one bucket of it.
  *
- * One mutation rather than four, so the panel can disable every row while any
- * of them is running — these all touch the same origin storage, and a second
- * clear starting mid-flight would report against a figure already moving.
+ * One mutation rather than one per bucket, so the panel can disable every row
+ * while any of them is running: these all touch the same origin storage, and a
+ * second clear starting mid-flight would report against a figure already
+ * moving.
  */
 export function useStorageBreakdown() {
   const queryClient = useQueryClient()
@@ -31,6 +38,10 @@ export function useStorageBreakdown() {
           return await eraseLibrary()
         case 'app-shell':
           return await clearAppShell()
+        case 'imported-books':
+          return await clearImportedBooks()
+        case 'adaptations':
+          return await clearAdaptations()
         case 'other':
           return await clearOtherData()
       }
@@ -46,6 +57,12 @@ export function useStorageBreakdown() {
         void queryClient.invalidateQueries({ queryKey: dbKeys.savedChapters })
         void queryClient.invalidateQueries({ queryKey: ['db', 'saved-chapter-ids'] })
         void queryClient.invalidateQueries({ queryKey: ['db', 'chapter-saved'] })
+      }
+      if (bucket === 'adaptations') {
+        void queryClient.invalidateQueries({ queryKey: ['adapt'] })
+      }
+      if (bucket === 'imported-books') {
+        void queryClient.invalidateQueries({ queryKey: ['local-novel'] })
       }
       await queryClient.invalidateQueries({ queryKey: dbKeys.storage })
     },

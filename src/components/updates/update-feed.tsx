@@ -210,7 +210,7 @@ function DayHeader({
         type="button"
         onClick={onToggle}
         aria-expanded={!collapsed}
-        className="flex w-full items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase transition-colors hover:text-foreground"
+        className="relative flex w-full items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors after:absolute after:-inset-y-3 after:inset-x-0 hover:text-foreground pointer-fine:after:hidden"
       >
         <ChevronRight
           className={cn(
@@ -220,7 +220,7 @@ function DayHeader({
           aria-hidden
         />
         {dayLabel(date)}
-        <span className="font-normal normal-case opacity-70">({count})</span>
+        <span className="font-normal opacity-70">({count})</span>
       </button>
     </h2>
   )
@@ -263,7 +263,6 @@ function UpdateGroupRow({
         >
           <MangaCover
             url={newest.thumbnailUrl ?? undefined}
-            title={newest.mangaTitle}
           />
         </Link>
 
@@ -392,7 +391,6 @@ function UpdateRow({ entry }: { entry: UpdateEntry }) {
       >
         <MangaCover
           url={entry.thumbnailUrl ?? undefined}
-          title={entry.mangaTitle}
         />
       </Link>
 

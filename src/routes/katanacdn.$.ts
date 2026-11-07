@@ -1,15 +1,14 @@
+import { sourceProxyPolicies } from '@/lib/transport/source-policy'
 import { createFileRoute } from '@tanstack/react-router'
 
+import { runServer } from '@/server/effect/run'
 import { proxyTo } from '@/server/proxy'
 
 // MangaKatana's numbered image hosts.
-const handler = ({ request }: { request: Request }) =>
-  proxyTo(request, {
-    prefix: '/katanacdn',
-    target: 'https://i1.mangakatana.com',
-    hostPattern: /^i[0-9]*\.mangakatana\.com$/,
-    redirects: 'follow',
-  })
+const handler = async ({ request }: { request: Request }) =>
+  await runServer(
+    proxyTo(request, sourceProxyPolicies['/katanacdn']),
+  )
 
 export const Route = createFileRoute('/katanacdn/$')({
   server: {

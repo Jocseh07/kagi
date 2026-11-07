@@ -17,18 +17,19 @@ Six sources, all English. `registry.ts` is the whole list.
 | Source | Kind | Reaches the network by | State |
 |---|---|---|---|
 | `asurascans` | comic | Direct — the API sends CORS | Working |
-| `mangadot` | comic | Same-origin proxy (`/mangadot`) | Working in `pnpm dev` |
-| `thunderscans` | comic | Same-origin proxy (`/thunderscans`) | Working in `pnpm dev` |
+| `mangadot` | comic | Same-origin proxy (`/mangadot`) | Working in `bun run dev` |
+| `thunderscans` | comic | Same-origin proxy (`/thunderscans`) | Working in `bun run dev` |
 | `local` | comic | Nothing; reads a folder on disk | Working |
 | `local-novel` | novel | Nothing; reads a folder on disk | Working |
-| `novelfull` | novel | Same-origin proxy via **curl** (`/novelfull`) | Working in `pnpm dev` |
+| `adapted` | comic | Nothing; serves manga pages drawn in this browser (`src/lib/adapt/`) | Working |
+| `novelfull` | novel | Same-origin proxy via **curl** (`/novelfull`) | Working in `bun run dev` |
 
 Three things follow from that table, and they are the shape of the whole
 problem:
 
 1. **Only `asurascans` can be read directly.** It is the one host in the app
    that sends `Access-Control-Allow-Origin`.
-2. **The three proxied sources only work under `pnpm dev`.** `server.proxy` is a
+2. **The three proxied sources only work under `bun run dev`.** `server.proxy` is a
    dev-server feature; a static build has no proxy in front of it and all three
    sources break until the same hop is reproduced at the deploy target.
 3. **`novelfull` has to be fetched by curl, not by Node.** The proxy resolves
@@ -289,7 +290,7 @@ filters, details, chapters, pages, plus an image-CDN CORS report — outside a
 browser. Copy it.
 
 ```sh
-pnpm smoke                  # Asura
+bun run smoke               # Asura
 ```
 
 Two things make this worth more than it looks:
@@ -447,7 +448,7 @@ serve their homepage and answer *every* deeper path with a managed challenge:
 |---|---|---|
 | `curl` | 200 | **403, challenge** |
 | Node `fetch` | 200 | **403, challenge** |
-| `workerd` (scratch worker, this repo's wrangler) | 200 | **403, challenge** |
+| `workerd` (scratch worker, this repo's runtime) | 200 | **403, challenge** |
 
 That third row is the new one. "The same-origin proxy, and the wall behind it"
 above ends on curl passing where Node failed, and `curlProxy` was the answer.
@@ -601,8 +602,8 @@ import does not undo it.
 **Verifying it.** Two scripts, both against a real file:
 
 ```
-pnpm mihon:report <file.tachibk>   # what would be imported and what skipped
-pnpm mihon:check  <file.tachibk>   # runs the real importer on a real schema
+bun run mihon:report <file.tachibk>   # what would be imported and what skipped
+bun run mihon:check  <file.tachibk>   # runs the real importer on a real schema
 ```
 
 `mihon:check` stands the database worker up on `node:sqlite` and speaks its

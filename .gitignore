@@ -12,7 +12,7 @@ dist
 dist-ssr
 .output
 .nitro
-.wrangler
+.alchemy
 *.local
 
 # Editor directories and files
@@ -26,19 +26,17 @@ dist-ssr
 *.sln
 *.sw?
 
-# Local Worker secrets (wrangler dev reads these)
-.dev.vars
-
-# Your deployment's real wrangler config; wrangler.jsonc is the template
-wrangler.local.jsonc
-
 # TanStack build cache
 .tanstack
 
-# Build-time client env; also holds CLERK_SECRET_KEY
+# Your deployment's values; .env.example is the template
 .env
+.env.prod
 
 # Local agent instruction files, never committed
 AGENTS.md
 CLAUDE.md
 DESIGN.md
+
+.tmp/
+rune/target/

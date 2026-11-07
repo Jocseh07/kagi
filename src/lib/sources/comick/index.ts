@@ -1,3 +1,4 @@
+import { parseDocument } from '../../text/document'
 import { DirectFetchTransport, RateLimiter } from '../../transport/direct-fetch'
 import type { HttpTransport } from '../../transport/types'
 import type {
@@ -21,6 +22,7 @@ import type {
   MetadataResponse,
   PhpArray,
 } from './dto'
+import { appOrigin } from '../app-origin'
 
 /**
  * Where the site lives, and what "open in browser" must point at.
@@ -55,12 +57,12 @@ const ICON_URL =
  */
 function resolveApiBase(): string {
   if (typeof location === 'undefined') return SITE_URL
-  return new URL('/comick', location.origin).toString()
+  return new URL('/comick', appOrigin()).toString()
 }
 
 function resolveImageBase(): string | null {
   if (typeof location === 'undefined') return null
-  return new URL('/comickcdn', location.origin).toString()
+  return new URL('/comickcdn', appOrigin()).toString()
 }
 
 /** The extension's budget: one request per two seconds. */
@@ -339,9 +341,10 @@ export class Comick implements Source {
 
   // -------------------------------------------------------------- filters --
 
-  async fetchFilterData(): Promise<ComickFilterData> {
+  async fetchFilterData(signal?: AbortSignal): Promise<ComickFilterData> {
     const body = await this.get<MetadataResponse>(
       new URL(`${this.apiBase}/api/metadata`),
+      signal,
     )
 
     const genres = asArray(body.genres)
@@ -412,7 +415,7 @@ export class Comick implements Source {
     signal?: AbortSignal,
   ): Promise<Document> {
     const res = await this.http.fetch({ url, signal })
-    return new DOMParser().parseFromString(await res.text(), 'text/html')
+    return parseDocument(await res.text(), 'text/html')
   }
 
   // --------------------------------------------------------------- images --
@@ -535,8 +538,7 @@ function buildDescription(data: ComicDataDto): string | undefined {
   const parts: string[] = []
 
   if (data.desc) {
-    const text = new DOMParser()
-      .parseFromString(data.desc, 'text/html')
+    const text = parseDocument(data.desc, 'text/html')
       .body.textContent?.replace(/\s+\n/g, '\n')
       .trim()
     if (text) parts.push(text)

@@ -21,6 +21,7 @@ import type {
   SManga,
   Source,
 } from '../types'
+import { appOrigin } from '../app-origin'
 
 /** Where the site lives, and what "open in browser" must point at. */
 const SITE_URL = 'https://fenrirealm.com'
@@ -42,7 +43,7 @@ const SITE_URL = 'https://fenrirealm.com'
  */
 function resolveApiBase(): string {
   if (typeof location === 'undefined') return SITE_URL
-  return new URL('/fenrirealm', location.origin).toString()
+  return new URL('/fenrirealm', appOrigin()).toString()
 }
 
 /**
@@ -327,10 +328,11 @@ export class FenrirRealm implements Source {
    * sheet, and the `genres[]` parameter is the one the site's own browse page
    * leads with.
    */
-  async fetchFilterData(): Promise<FenrirFilterData> {
+  async fetchFilterData(signal?: AbortSignal): Promise<FenrirFilterData> {
     try {
       const res = await this.http.fetch({
         url: `${this.apiBase}/api/new/v2/taxonomies/genres`,
+        signal,
       })
       const genres = await res.json<TaxonomyDto[]>()
       if (Array.isArray(genres)) {
@@ -338,6 +340,7 @@ export class FenrirRealm implements Source {
         return { genres }
       }
     } catch {
+      signal?.throwIfAborted()
       // A filter sheet without genres still sorts and filters by status.
     }
     return { genres: [] }
@@ -552,14 +555,6 @@ const STYLE_BLOCK = /<style\b[^>]*>[\s\S]*?<\/style>/gi
 const HIDDEN_BLOCK =
   /<(\w+)\b[^>]*\baria-hidden\s*=\s*["']?true["']?[^>]*>[\s\S]*?<\/\1\s*>/gi
 
-/**
- * Removes the anti-scraping furniture from a chapter body.
- *
- * Deliberately string-level rather than DOM-level: `sanitizeChapterHtml` falls
- * back to stripping tags when there is no `DOMParser`, so a DOM-based version
- * of this would silently do nothing under Node and leave the smoke script
- * asserting against a case the browser never runs.
- */
 function stripDecoys(html: string): string {
   let out = html.replace(STYLE_BLOCK, '')
 
@@ -680,7 +675,6 @@ function renderText(node: TiptapNode): string {
  *
  * Descriptions arrive as markup but are shown in a `whitespace-pre-line`
  * paragraph, so block boundaries become newlines and everything else goes.
- * Regex rather than `DOMParser` for the same reason as `stripDecoys`.
  */
 function htmlToText(html: string): string {
   return html

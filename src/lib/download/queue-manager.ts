@@ -12,6 +12,7 @@
  * drains, and any enqueue can wake it again with `nudge()`.
  */
 
+import { appUpdateBlocked } from '@/lib/runtime/app-update-safety'
 import { getFlag, getManga, getSetting, listChapters } from '@/lib/db/repositories'
 import {
   backgroundFetchIdFor,
@@ -52,6 +53,7 @@ import {
   normaliseNovelConcurrency,
 } from './queue-types'
 import type { QueueItem } from './queue-types'
+import { describeError } from '@/lib/ui/describe-error'
 
 /** How often the loop looks for new work while it has something to do. */
 const POLL_INTERVAL_MS = 2_000
@@ -187,7 +189,7 @@ class QueueManager {
   // ------------------------------------------------------------------ api --
 
   start(): void {
-    if (this.running || this.halted) return
+    if (this.running || this.halted || appUpdateBlocked()) return
     this.suspended = false
     this.running = true
     this.publish()
@@ -204,6 +206,19 @@ class QueueManager {
     this.publish()
   }
 
+  async stopAndDrain(): Promise<void> {
+    this.stop()
+    if (this.inFlight.size === 0) return
+    await new Promise<void>((resolve) => {
+      const unsubscribe = this.subscribe(() => {
+        if (this.inFlight.size !== 0) return
+        unsubscribe()
+        resolve()
+      })
+      if (this.inFlight.size === 0) { unsubscribe(); resolve() }
+    })
+  }
+
   /** Wakes a sleeping loop, or starts one, after rows were added elsewhere. */
   nudge(): void {
     if (this.running) {
@@ -218,7 +233,7 @@ class QueueManager {
     try {
       await pauseAll()
     } catch (error) {
-      this.haltWith('database', messageOf(error))
+      this.haltWith('database', describeError(error))
       return
     }
     // The rows are already `paused`, so the aborted saves have nothing to
@@ -234,7 +249,7 @@ class QueueManager {
     try {
       await resumeAll()
     } catch (error) {
-      this.haltWith('database', messageOf(error))
+      this.haltWith('database', describeError(error))
       return
     }
     this.start()
@@ -300,7 +315,7 @@ class QueueManager {
         await rehydrateOnBoot()
         this.booted = true
       } catch (error) {
-        this.haltWith('database', messageOf(error))
+        this.haltWith('database', describeError(error))
         return
       }
     }
@@ -318,7 +333,7 @@ class QueueManager {
       try {
         hasWork = await this.tick()
       } catch (error) {
-        this.haltWith('database', messageOf(error))
+        this.haltWith('database', describeError(error))
         return
       }
 
@@ -388,7 +403,7 @@ class QueueManager {
     try {
       const source = getSource(item.sourceId)
       const subject = await this.subjectOf(item)
-      const title = `${item.mangaTitle} — ${item.chapterName}`
+      const title = `${item.mangaTitle}: ${item.chapterName}`
 
       if (isPrimableTextSource(source)) {
         await primeBackgroundFetch({
@@ -592,7 +607,7 @@ class QueueManager {
       if (controller.signal.aborted) {
         await this.settleAbort(record)
       } else {
-        await this.recordFailure(item, messageOf(error))
+        await this.recordFailure(item, describeError(error))
       }
     } finally {
       this.inFlight.delete(item.id)
@@ -635,7 +650,7 @@ class QueueManager {
       signal: controller.signal,
       // Names the run in the system download UI when it goes through Background
       // Fetch, where the user sees it outside the app.
-      title: `${item.mangaTitle} — ${item.chapterName}`,
+      title: `${item.mangaTitle}: ${item.chapterName}`,
       // The worker fetches these images itself, outside the source's limiter.
       minIntervalMs: source.pageFetchIntervalMs,
       onProgress: this.progressWriter(item.id, pages.length),
@@ -835,7 +850,7 @@ class QueueManager {
     try {
       return await op()
     } catch (error) {
-      this.haltWith('database', messageOf(error))
+      this.haltWith('database', describeError(error))
       return null
     }
   }
@@ -925,8 +940,5 @@ class QueueManager {
   }
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
 export const queueManager = new QueueManager()

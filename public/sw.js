@@ -84,6 +84,10 @@ self.addEventListener('fetch', (event) => {
 
   const sameOrigin = url.origin === self.location.origin
 
+  // The Android APK is tens of megabytes. The navigation rule below would store
+  // it as the app shell.
+  if (sameOrigin && url.pathname.startsWith('/download/')) return
+
   // Deep links must resolve to the SPA shell when the network is gone.
   if (request.mode === 'navigate') {
     event.respondWith(navigationResponse(request))

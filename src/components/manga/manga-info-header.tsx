@@ -13,9 +13,10 @@ import type { LucideIcon } from 'lucide-react'
 
 import { Link } from '@tanstack/react-router'
 
-import { MangaCover } from '@/components/manga-grid'
+import { MangaCover, mangaSlug } from '@/components/manga-grid'
 import type { PageBack } from '@/components/page-back'
 import { Button } from '@/components/ui/button'
+import { displayTitle } from '@/lib/sources/display-title'
 import type { MangaStatus, SManga } from '@/lib/sources/types'
 
 const STATUS_LABELS: Record<MangaStatus, string> = {
@@ -85,7 +86,6 @@ export function MangaInfoHeader({
       <div className="relative w-28 shrink-0 sm:w-32 md:w-full">
         <MangaCover
           url={manga.thumbnailUrl}
-          title={manga.title}
           className={
             inLibrary
               ? 'rounded-xl ring-1 ring-primary/50 ring-offset-2 ring-offset-background'
@@ -110,8 +110,8 @@ export function MangaInfoHeader({
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <h1 className="text-xl font-semibold tracking-tight text-balance sm:text-2xl md:text-xl">
-          {manga.title}
+        <h1 className="text-xl font-semibold tracking-tight text-balance wrap-break-word sm:text-2xl md:text-xl">
+          {displayTitle(manga.title, mangaSlug(manga))}
         </h1>
 
         <InfoLine icon={User} text={manga.author || 'Unknown author'} />
@@ -135,7 +135,9 @@ function InfoLine({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
   return (
     <div className="flex min-w-0 items-start gap-1.5 text-base text-muted-foreground sm:text-sm">
       <Icon className="size-4 h-lh shrink-0" />
-      <p className="min-w-0 truncate">{text}</p>
+      <p className="line-clamp-2 min-w-0 wrap-break-word" title={text}>
+        {text}
+      </p>
     </div>
   )
 }

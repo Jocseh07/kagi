@@ -1,12 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
 /**
@@ -18,7 +11,9 @@ import { cn } from '@/lib/utils'
  */
 
 const BASE =
-  'inline-flex items-center justify-center gap-1.5 rounded-md text-sm ' +
+  'relative inline-flex items-center justify-center gap-1.5 rounded-md text-sm ' +
+  // A 40px target on touch, without growing the drawn button.
+  'after:absolute after:-inset-y-1 pointer-fine:after:hidden ' +
   'font-medium whitespace-nowrap transition-colors ' +
   'focus-visible:outline-2 focus-visible:outline-offset-2 ' +
   'focus-visible:outline-ring ' +
@@ -53,58 +48,11 @@ export function ToolbarButton({
   )
 }
 
-interface ToolbarSelectProps {
-  /** Names the control for assistive tech; there is no visible label. */
-  label: string
-  value: string
-  disabled?: boolean
-  onValueChange(value: string): void
-  /** `SelectItem`s. */
-  children: ReactNode
-  className?: string
-}
-
-/**
- * The reader's dropdown.
- *
- * Composes the shared shadcn `Select` so it matches every other dropdown in the
- * app. The popover itself is portalled outside the reader shell, so it must
- * rely only on global tokens — `bg-popover` resolves to the same dark surface
- * the toolbar uses.
- */
-export function ToolbarSelect({
-  label,
-  value,
-  disabled,
-  onValueChange,
-  children,
-  className = '',
-}: ToolbarSelectProps) {
-  return (
-    <Select value={value} disabled={disabled} onValueChange={onValueChange}>
-      <SelectTrigger
-        aria-label={label}
-        disabled={disabled}
-        className={
-          'h-8 max-w-[14rem] rounded-md border-border ' +
-          'bg-secondary text-secondary-foreground ' +
-          className
-        }
-      >
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectGroup>{children}</SelectGroup>
-      </SelectContent>
-    </Select>
-  )
-}
-
 export function Spinner({ label }: { label: string }) {
   return (
     <div className="flex flex-col items-center gap-2 text-muted-foreground">
       <div
-        className="size-6 animate-spin rounded-full border-2 border-border border-t-primary"
+        className="size-6 animate-spin rounded-full border-2 border-border border-t-primary motion-reduce:animate-none"
         role="progressbar"
         aria-label={label}
       />

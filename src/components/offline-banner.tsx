@@ -23,7 +23,7 @@ export function OfflineBanner() {
         <p className="min-w-0 truncate font-medium">
           Offline
           <span className="font-normal text-muted-foreground">
-            {' — your library and downloaded chapters still work.'}
+            {'. Your library and downloads still work.'}
           </span>
         </p>
       </div>

@@ -22,6 +22,8 @@ export interface SourceCatalogEntry {
   name: string
   /** Comics when omitted on the class, matching `kindOf`. */
   contentKind: ContentKind
+  /** Registered on the web only; see `web-only.ts`. */
+  webOnly?: true
 }
 
 export const sourceCatalog: readonly SourceCatalogEntry[] = [
@@ -41,9 +43,11 @@ export const sourceCatalog: readonly SourceCatalogEntry[] = [
   { id: 'fenrirealm', name: 'Fenrir Realm', contentKind: 'novel' },
   { id: 'webnovel', name: 'Webnovel', contentKind: 'novel' },
   { id: 'novelmtl', name: 'NovelMTL', contentKind: 'novel' },
+  { id: 'novelping', name: 'NovelPing', contentKind: 'novel' },
   { id: 'wuxiaworld', name: 'WuxiaWorld', contentKind: 'novel' },
   { id: 'local', name: 'Local files', contentKind: 'comic' },
   { id: 'local-novel', name: 'Local novels', contentKind: 'novel' },
+  { id: 'adapted', name: 'Adaptations', contentKind: 'comic', webOnly: true },
 ]
 
 const byId = new Map(sourceCatalog.map((entry) => [entry.id, entry]))
@@ -55,6 +59,11 @@ const byId = new Map(sourceCatalog.map((entry) => [entry.id, entry]))
  */
 export function contentKindOfId(sourceId: string): ContentKind {
   return byId.get(sourceId)?.contentKind ?? 'comic'
+}
+
+/** The source's display name, or its id when the catalog does not know it. */
+export function sourceNameOf(sourceId: string): string {
+  return byId.get(sourceId)?.name ?? sourceId
 }
 
 /** The id of the source with this display name, matched case-insensitively. */

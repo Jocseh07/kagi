@@ -6,9 +6,11 @@
  */
 
 import { createFileRoute } from '@tanstack/react-router'
+import * as Effect from 'effect/Effect'
 
-import { requireUserId, respondTo } from '@/server/auth'
-import { syncDb } from '@/server/db'
+import { Auth } from '@/server/effect/auth'
+import { runServer } from '@/server/effect/run'
+import { respondTo } from '@/server/errors'
 import { refreshEntitlement, resolveEntitlement } from '@/server/polar'
 
 export const Route = createFileRoute('/api/billing/status')({
@@ -16,17 +18,21 @@ export const Route = createFileRoute('/api/billing/status')({
     handlers: {
       GET: async ({ request }) => {
         try {
-          const userId = await requireUserId(request)
-          const db = syncDb()
-          const refresh = new URL(request.url).searchParams.get('refresh') === '1'
-          const entitlement = refresh
-            ? await refreshEntitlement(db, userId)
-            : await resolveEntitlement(db, userId)
-          return Response.json({
-            active: entitlement.active,
-            hasCustomer: entitlement.polarCustomerId !== null,
-            subscription: entitlement.subscription,
-          })
+          return await runServer(
+            Effect.gen(function* () {
+              const auth = yield* Auth
+              const userId = yield* auth.requireUserId(request)
+              const refresh = new URL(request.url).searchParams.get('refresh') === '1'
+              const entitlement = refresh
+                ? yield* refreshEntitlement(userId)
+                : yield* resolveEntitlement(userId)
+              return Response.json({
+                active: entitlement.active,
+                hasCustomer: entitlement.polarCustomerId !== null,
+                subscription: entitlement.subscription,
+              })
+            }),
+          )
         } catch (error) {
           return respondTo(error)
         }

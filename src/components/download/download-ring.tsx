@@ -39,7 +39,7 @@ export function DownloadRing({
   return (
     <svg
       viewBox="0 0 24 24"
-      className={cn('size-5', indeterminate && 'animate-spin', className)}
+      className={cn('size-5', indeterminate && 'animate-spin motion-reduce:animate-none', className)}
       role="progressbar"
       aria-label={label}
       aria-valuemin={0}

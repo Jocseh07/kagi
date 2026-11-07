@@ -1,6 +1,6 @@
 # Security
 
-Report a vulnerability privately to joseph@josephmuturi.me, or open a GitHub
+Report a vulnerability privately to joseph@muturi.dev, or open a GitHub
 security advisory on this repository. Do not open a public issue for it.
 
 Include what is affected, how to reproduce it, and the impact. You will get a

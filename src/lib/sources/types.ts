@@ -61,6 +61,15 @@ export interface SChapter {
   dateUpload?: number
   chapterNumber: number
   scanlator?: string
+  /**
+   * True when the source charges for this chapter.
+   *
+   * Shown, never enforced: the row still opens, and the read fails with the
+   * source's own message. Left undefined by sources that have no paywall or
+   * cannot see it from the chapter list, which is how the UI tells "free" from
+   * "unknown" and stays silent for the second.
+   */
+  locked?: boolean
   memo?: Record<string, unknown>
 }
 
@@ -178,6 +187,8 @@ export interface Source extends SourceInfo {
    */
   getPopularManga(page: number, signal?: AbortSignal): Promise<MangasPage>
   getLatestUpdates(page: number, signal?: AbortSignal): Promise<MangasPage>
+  /** Present only when the site ranks "trending" separately from "popular". */
+  getHotManga?(page: number, signal?: AbortSignal): Promise<MangasPage>
   getSearchMangaList(
     page: number,
     query: string,
@@ -230,10 +241,10 @@ export interface Source extends SourceInfo {
   parseChapterText?(body: string): ChapterText
 
   /** Runtime-fetched filter option data, cached by the app. */
-  fetchFilterData?(): Promise<unknown>
+  fetchFilterData?(signal?: AbortSignal): Promise<unknown>
   getFilterList(data?: unknown): FilterList
 
-  getRelatedMangaList?(manga: SManga): Promise<SManga[]>
+  getRelatedMangaList?(manga: SManga, signal?: AbortSignal): Promise<SManga[]>
 
   /** Canonical web URL, for "open in browser". */
   getMangaWebUrl(manga: SManga): string

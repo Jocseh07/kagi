@@ -23,50 +23,8 @@ import { useRouterState } from '@tanstack/react-router'
 import { useAuth } from '@clerk/react'
 
 import { useDatabaseReady } from '@/lib/db/provider'
-import { isOnline } from '@/lib/offline/use-online'
+import { registerSyncRunner, requestSync } from './sync-request'
 import { useSync, useSyncEntitled } from './use-sync'
-
-/** Shortest distance between two automatic runs. */
-const MIN_GAP_MS = 30_000
-
-export type SyncReason = 'chapter-read' | 'left-reader' | 'visible' | 'online'
-
-type Runner = () => Promise<void>
-
-let runner: Runner | null = null
-let lastStartedAt = 0
-let trailing: ReturnType<typeof setTimeout> | null = null
-
-function start(): void {
-  if (!runner) return
-  lastStartedAt = Date.now()
-  void runner()
-}
-
-/**
- * Asks for a sync soon. Runs at once when the last one is old enough,
- * otherwise once at the end of the gap, however many times it is asked.
- */
-export function requestSync(_reason: SyncReason): void {
-  if (!runner || !isOnline()) return
-  const elapsed = Date.now() - lastStartedAt
-  if (elapsed >= MIN_GAP_MS) {
-    start()
-    return
-  }
-  trailing ??= setTimeout(() => {
-    trailing = null
-    start()
-  }, MIN_GAP_MS - elapsed)
-}
-
-function register(next: Runner | null): void {
-  runner = next
-  if (next === null && trailing !== null) {
-    clearTimeout(trailing)
-    trailing = null
-  }
-}
 
 /**
  * Mounted once, app-wide, beside the sign-in run. Registers the runner while
@@ -81,8 +39,8 @@ export function useSyncOnEvents(): void {
   const canSync = isLoaded && ready && entitled && Boolean(userId)
 
   useEffect(() => {
-    register(canSync ? sync : null)
-    return () => register(null)
+    registerSyncRunner(canSync ? sync : null)
+    return () => registerSyncRunner(null)
   }, [canSync, sync])
 
   // Only the transition into hidden matters: a run on return is what brings

@@ -26,6 +26,11 @@
  * bytes stay readable.
  */
 
+import * as Effect from 'effect/Effect'
+
+import { attempt } from './effect/errors'
+import { rateLimitProxy } from './rate-limit'
+
 /** The MangaHub property this source reads. Also the `Origin` the API wants. */
 const SITE_URL = 'https://mangakakalot.fun'
 
@@ -54,7 +59,20 @@ const MAX_BODY_BYTES = 4096
  */
 let cachedKey: string | null = null
 
-export async function mangahubGraphql(request: Request): Promise<Response> {
+/**
+ * The relay. Charges the proxy budget first: this endpoint is not `proxyTo`,
+ * so it is not covered by its check, but it is the same public surface and
+ * the same bucket.
+ */
+export const mangahubGraphql = Effect.fn('mangahub.graphql')(function* (
+  request: Request,
+) {
+  const limited = yield* rateLimitProxy(request)
+  if (limited) return limited
+  return yield* attempt(() => relay(request), 'MangaHub could not be reached.')
+})
+
+async function relay(request: Request): Promise<Response> {
   const body = await request.text()
   if (body.length > MAX_BODY_BYTES) {
     return new Response('Query is too large', { status: 413 })

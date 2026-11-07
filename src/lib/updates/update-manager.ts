@@ -29,6 +29,7 @@ import {
 } from '@/lib/db/repositories'
 import { getSource } from '@/lib/sources/registry'
 import type { SManga, Source } from '@/lib/sources/types'
+import { describeError } from '@/lib/ui/describe-error'
 
 /**
  * Minimum gap between two checks against the same source.
@@ -394,6 +395,11 @@ class UpdateManager {
    * Stops the run. The signal reaches `fetch` through `getMangaUpdate`, so the
    * request in flight is aborted rather than left to run to completion.
    */
+  async cancelAndDrain(): Promise<void> {
+    this.cancel()
+    await this.inFlight
+  }
+
   cancel(): void {
     this.controller?.abort()
   }
@@ -425,7 +431,7 @@ class UpdateManager {
     try {
       plan = await this.plan(options)
     } catch (error) {
-      return this.finish(startedAt, controller, messageOf(error))
+      return this.finish(startedAt, controller, describeError(error))
     }
 
     this.total = plan.entries.length
@@ -445,7 +451,7 @@ class UpdateManager {
     } catch (error) {
       // `runSource` handles its own failures, so reaching here means something
       // unforeseen. It still has to leave the runtime idle and reusable.
-      return this.finish(startedAt, controller, messageOf(error))
+      return this.finish(startedAt, controller, describeError(error))
     }
 
     const summary = this.finish(startedAt, controller, null)
@@ -520,7 +526,7 @@ class UpdateManager {
     try {
       source = getSource(sourceId)
     } catch (error) {
-      unavailable = messageOf(error)
+      unavailable = describeError(error)
     }
 
     // A shared cursor rather than a slice per worker: series take wildly
@@ -574,7 +580,7 @@ class UpdateManager {
             this.current.delete(key)
             return
           }
-          this.recordFailure(entry, sourceId, source.name, messageOf(error))
+          this.recordFailure(entry, sourceId, source.name, describeError(error))
         }
 
         this.completed += 1
@@ -787,8 +793,5 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   })
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
 export const updateManager = new UpdateManager()

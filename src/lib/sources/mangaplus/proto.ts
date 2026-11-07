@@ -27,6 +27,23 @@ export interface Title {
   portraitImageUrl?: string
 }
 
+/** A genre, as the catalogue names it and as the API filters by it. */
+export interface TagName {
+  name: string
+  slug: string
+}
+
+export interface AllTitlesEntry {
+  title: Title
+  genres: TagName[]
+}
+
+export interface AllTitlesV3 {
+  /** The whole genre vocabulary, which is what the filter sheet offers. */
+  tags: TagName[]
+  entries: AllTitlesEntry[]
+}
+
 export interface Chapter {
   chapterId: number
   /** The site's own label, e.g. `#1192`. */
@@ -143,6 +160,35 @@ export function parseAllTitles(bytes: Uint8Array): Title[] {
   return readMessages(view, 1).flatMap((group) =>
     readMessages(group, 2).map(toTitle),
   )
+}
+
+function toTagName(message: Message): TagName {
+  return {
+    name: readString(message, 1) ?? '',
+    slug: readString(message, 2) ?? '',
+  }
+}
+
+/**
+ * `title_list/all_v3`: one publication type's catalogue, each title carrying
+ * its genres, plus the vocabulary those genres are drawn from.
+ */
+export function parseAllTitlesV3(bytes: Uint8Array): AllTitlesV3 {
+  const view = readMessage(successOf(bytes), 35)
+  if (!view) return { tags: [], entries: [] }
+
+  const entries: AllTitlesEntry[] = []
+  for (const entry of readMessages(view, 3)) {
+    const title = readMessage(entry, 2)
+    if (!title) continue
+
+    entries.push({
+      title: toTitle(title),
+      genres: readMessages(entry, 3).map(toTagName),
+    })
+  }
+
+  return { tags: readMessages(view, 2).map(toTagName), entries }
 }
 
 /** `title_detailV3`: one title with its chapter list and genres. */

@@ -27,16 +27,14 @@ function Screen({
       className="flex min-h-full flex-1 items-center justify-center p-6"
     >
       <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 text-center">
-        <div
+        <Icon
           className={cn(
-            'mx-auto flex size-12 items-center justify-center rounded-full bg-secondary',
+            'mx-auto size-6',
             tone === 'destructive' ? 'text-destructive' : 'text-muted-foreground',
           )}
-        >
-          <Icon className="size-6" />
-        </div>
+        />
         <h1 className="mt-3 text-base font-semibold text-foreground">{title}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+        <p className="mt-1 text-base text-muted-foreground sm:text-sm">{description}</p>
         <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
           {actions}
         </div>
@@ -61,7 +59,7 @@ export function RouteErrorScreen({ error, reset }: ErrorComponentProps) {
     <Screen
       icon={TriangleAlert}
       title="Something went wrong"
-      description="This page could not be loaded. It is usually temporary — trying again often clears it."
+      description="This page could not load. Try again."
       actions={
         <>
           <Button
@@ -107,7 +105,7 @@ export function NotFoundScreen() {
       tone="muted"
       icon={Compass}
       title="Page not found"
-      description="That address does not lead anywhere in Kagi. It may have been renamed, or the link that brought you here may be out of date."
+      description="Nothing lives at this address. The link may be out of date."
       actions={
         <>
           <Button size="lg" asChild>

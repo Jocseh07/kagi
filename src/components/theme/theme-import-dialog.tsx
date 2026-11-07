@@ -72,7 +72,7 @@ export function ThemeImportDialog({ onSave }: ThemeImportDialogProps) {
         <DialogHeader>
           <DialogTitle>Import a theme</DialogTitle>
           <DialogDescription>
-            Paste what tweakcn gave you — either the registry JSON or the CSS.
+            Paste the registry JSON or the CSS from tweakcn.
             It is saved on this device only.
           </DialogDescription>
         </DialogHeader>

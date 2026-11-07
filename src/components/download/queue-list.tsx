@@ -309,5 +309,5 @@ function chapterRangeLabel(entries: Entry[]): string {
   if (!first || !last) return ''
   const start = first.item.chapterName
   const end = last.item.chapterName
-  return start === end ? start : `${start} – ${end}`
+  return start === end ? start : `${start}-${end}`
 }

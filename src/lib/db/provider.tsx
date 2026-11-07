@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { DatabaseZap, TriangleAlert } from 'lucide-react'
+import { DatabaseZap } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { applyStoredPreferences } from '@/lib/sources/preferences'
@@ -87,7 +87,6 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
 
   return (
     <DbContext.Provider value={state}>
-      {state.status === 'error' && <DbErrorBanner error={state.error} />}
       {children}
     </DbContext.Provider>
   )
@@ -102,9 +101,7 @@ function MultiTabBlock() {
   return (
     <div className="flex min-h-dvh items-center justify-center p-6">
       <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 text-center">
-        <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-secondary text-muted-foreground">
-          <DatabaseZap className="size-6" />
-        </div>
+        <DatabaseZap aria-hidden className="mx-auto size-6 text-muted-foreground" />
         <h1 className="mt-3 text-base font-semibold text-foreground">
           Already open in another tab
         </h1>
@@ -126,34 +123,3 @@ function MultiTabBlock() {
   )
 }
 
-/**
- * Fixed rather than inline: the root layout fills the viewport, so a sibling
- * banner would push the navigation off screen.
- */
-function DbErrorBanner({ error }: { error: Error | null }) {
-  const [dismissed, setDismissed] = useState(false)
-  if (dismissed) return null
-
-  return (
-    <div
-      role="alert"
-      className="fixed top-3 right-3 z-50 flex max-w-sm items-start gap-3 rounded-lg border border-destructive/40 bg-card p-3 shadow-lg"
-    >
-      <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
-      <div className="min-w-0 flex-1 space-y-1">
-        <p className="text-sm font-medium">Library unavailable</p>
-        <p className="text-xs text-muted-foreground">
-          {error?.message ?? 'The library database could not be opened.'} Browsing
-          sources still works, but nothing can be saved.
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={() => setDismissed(true)}
-        className="text-xs text-muted-foreground hover:text-foreground"
-      >
-        Dismiss
-      </button>
-    </div>
-  )
-}

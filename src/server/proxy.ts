@@ -4,9 +4,9 @@
  *
  * This used to be split in two: a Node proxy in the Vite dev server for the
  * plain CORS withholders, and a curl hop for the TLS-fingerprinted one, with
- * a third copy in a Nitro Worker for production. Under `@cloudflare/vite-plugin`
- * dev and production are the same workerd runtime, so there is one
- * implementation and it is the deployed one.
+ * a third copy in a Nitro Worker for production. Dev and production are now
+ * the same workerd runtime, so there is one implementation and it is the
+ * deployed one.
  *
  * The challenge detector below is what tells us whether the Worker's TLS
  * fingerprint passed. A challenged response is answered with 503 +
@@ -17,20 +17,14 @@
 /** Kept in step with `CHALLENGE_HEADER` in src/lib/transport/types.ts. */
 const CHALLENGE_HEADER = 'x-proxy-challenge'
 
+import { SOURCE_BROWSER_HEADERS as BROWSER_HEADERS } from '../lib/transport/source-policy'
+import * as Effect from 'effect/Effect'
+
+import { Env } from './effect/env'
+import type { KagiEnv } from './effect/env'
+import { attempt } from './effect/errors'
 import { rateLimitProxy } from './rate-limit'
 
-/**
- * The minimum that gets past a challenge. Sent by us rather than forwarded
- * from the browser: requests from the app carry `sec-fetch-*` headers that
- * mark them as scripted.
- */
-const BROWSER_HEADERS: Record<string, string> = {
-  'User-Agent':
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  Accept:
-    'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-  'Accept-Language': 'en-US,en;q=0.9',
-}
 
 /**
  * Response headers that survive the hop.
@@ -45,6 +39,27 @@ const FORWARDED_HEADERS = [
   'etag',
   'last-modified',
 ] as const
+
+/**
+ * Freshness given to an image whose CDN sent none.
+ *
+ * `public` rather than `private`: the proxies need no sign-in and a page image
+ * carries nothing about the reader who asked for it. It is also what lets the
+ * colo hold one: the Cache API refuses to store a `private` response.
+ */
+const IMAGE_CACHE_CONTROL = 'public, max-age=604800, immutable'
+
+/**
+ * Where a proxied image is held in the colo.
+ *
+ * Keyed under this deployment's own origin because the Cache API only accepts
+ * a key on a hostname the zone owns. `/__proxy-cache/*` matches no route and
+ * is never requested over the network.
+ */
+function cacheKeyUrl(target: URL, env: KagiEnv): string {
+  const base = env.APP_ORIGIN?.trim() || 'https://kagi.invalid'
+  return `${new URL(base).origin}/__proxy-cache/${encodeURIComponent(target.toString())}`
+}
 
 export interface ProxyToOptions {
   /** Path prefix the app requests, e.g. `/mangadot`. */
@@ -103,17 +118,46 @@ export interface ProxyToOptions {
    * parameter is stripped from the upstream request. MANGA Plus only.
    */
   xorKeyParam?: string
+  /**
+   * This prefix serves immutable binary assets: covers and page images.
+   *
+   * Declared by the route rather than sniffed from `content-type`, because
+   * MangaDex's cover host sends no content-type at all and it is exactly the
+   * image the library grid asks for most. It turns on the default freshness
+   * above and the colo cache; a prefix serving listings or chapter lists must
+   * leave it off, since those are the things that change.
+   */
+  assets?: boolean
 }
 
-export async function proxyTo(
+/**
+ * The hop. Charges the caller's proxy budget, then forwards.
+ *
+ * The forwarding itself is a plain async function: it is one long sequence of
+ * fetch-and-header work with no service of its own beyond the bindings handed
+ * to it, and expressing it as a generator would buy nothing.
+ */
+export const proxyTo = Effect.fn('proxy.to')(function* (
   request: Request,
   options: ProxyToOptions,
-): Promise<Response> {
+) {
   // Refused before any parsing: the proxies need no sign-in, so this is the
   // only thing between a scraper and the upstream sites.
-  const limited = await rateLimitProxy(request)
+  const limited = yield* rateLimitProxy(request)
   if (limited) return limited
 
+  const env = yield* Env
+  return yield* attempt(
+    () => forward(request, options, env),
+    'The upstream source could not be reached.',
+  )
+})
+
+async function forward(
+  request: Request,
+  options: ProxyToOptions,
+  env: KagiEnv,
+): Promise<Response> {
   // The path carries the prefix and the query string; the suffix is what the
   // upstream site should see.
   const incoming = new URL(request.url)
@@ -170,6 +214,11 @@ export async function proxyTo(
     return new Response('Method not allowed', { status: 405 })
   }
 
+  // A HEAD carries no body to hold, and an XOR'd response is keyed by a
+  // per-request key that is stripped from the upstream URL, so two readers
+  // with different keys would collide on one entry.
+  const cacheable = request.method === 'GET' && options.assets === true && !options.xorKeyParam
+
   const headers: Record<string, string> = options.browserHeaders
     ? { ...BROWSER_HEADERS }
     : { 'User-Agent': BROWSER_HEADERS['User-Agent']! }
@@ -181,6 +230,15 @@ export async function proxyTo(
       .join('; ')
   }
   Object.assign(headers, options.headers, lifted)
+
+  // A page image the colo has already pulled for another reader. Looked up
+  // after the rate limit on purpose: a hit still spends the caller's budget,
+  // so the cache cannot be used to sidestep it.
+  const cacheKey = cacheable ? new Request(cacheKeyUrl(url, env)) : null
+  if (cacheKey) {
+    const hit = await caches.default.match(cacheKey).catch(() => undefined)
+    if (hit) return hit
+  }
 
   const upstream = await fetch(url, {
     method: request.method,
@@ -225,13 +283,36 @@ export async function proxyTo(
     if (value) responseHeaders.set(name, value)
   }
 
+  // A safety net, not the common case. Measured from a colo, MangaDex sends
+  // `public, max-age=604800, immutable` on page images and
+  // `max-age=315360000` on covers, and those are forwarded above untouched.
+  // This only covers an asset host that sends no freshness at all, where the
+  // browser would otherwise come back through the Worker for a picture it
+  // already has. The value matches what the hosts that do send one agree on.
+  if (options.assets && !responseHeaders.has('cache-control')) {
+    responseHeaders.set('cache-control', IMAGE_CACHE_CONTROL)
+  }
+
   let body = request.method === 'HEAD' ? null : upstream.body
   if (body && xorKey) body = body.pipeThrough(xorStream(xorKey))
 
-  return new Response(body, {
+  const response = new Response(body, {
     status: upstream.status,
     headers: responseHeaders,
   })
+
+  if (
+    cacheKey &&
+    upstream.status === 200 &&
+    !/no-store|private/i.test(responseHeaders.get('cache-control') ?? '')
+  ) {
+    // `clone()` tees natively, and the write runs past the response, so the
+    // reader who paid for the miss still streams rather than waiting for the
+    // colo to finish storing it.
+    env.waitUntil(caches.default.put(cacheKey, response.clone()).catch(() => undefined))
+  }
+
+  return response
 }
 
 /**

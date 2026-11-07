@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,10 +14,8 @@ import { cn } from '@/lib/utils'
 /**
  * The synopsis, folded to a few lines, with the series' tags underneath.
  *
- * A long synopsis printed in full pushes the chapter list — the reason anyone
- * opened the page — below the fold. Mihon shows roughly three lines behind a
- * gradient scrim and lets the whole block be tapped to open, which is what
- * this reproduces.
+ * A long synopsis printed in full pushes the chapter list below the fold, so
+ * it is clamped to three lines with a More toggle underneath.
  *
  * The tags follow the same state: one swipeable line while the synopsis is
  * shut, wrapped into rows once it is open. Collapsed, they are a reminder of
@@ -41,12 +40,7 @@ export function ExpandableDescription({
 
   return (
     <div className={cn('flex flex-col gap-3', className)}>
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((open) => !open)}
-        className="relative w-full cursor-pointer text-left"
-      >
+      <div className="flex flex-col items-start gap-1">
         <p
           className={cn(
             'text-base whitespace-pre-line text-foreground/80 sm:text-sm',
@@ -55,33 +49,26 @@ export function ExpandableDescription({
         >
           {text}
         </p>
-
-        {/* The scrim sits over the last line while shut, and out of the way of
-            the text once open, so the caret is always the thing you aim at. */}
-        <span
-          className={cn(
-            'flex h-6 items-end justify-center',
-            !expanded &&
-              'absolute inset-x-0 bottom-0 bg-linear-to-b from-transparent to-background',
-          )}
+        <Button
+          variant="link"
+          size="sm"
+          className="h-auto px-0"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((open) => !open)}
         >
+          {expanded ? 'Less' : 'More'}
           <ChevronDown
-            className={cn(
-              'size-4 text-muted-foreground',
-              expanded && 'rotate-180',
-            )}
+            data-icon="inline-end"
+            className={cn('transition-transform motion-reduce:transition-none', expanded && 'rotate-180')}
           />
-          <span className="sr-only">
-            {expanded ? 'Collapse description' : 'Expand description'}
-          </span>
-        </span>
-      </button>
+        </Button>
+      </div>
 
       {genres && genres.length > 0 && (
         <div
           className={cn(
             'flex gap-1.5',
-            expanded ? 'flex-wrap' : '-mx-2 overflow-x-auto px-2 pb-1',
+            expanded ? 'flex-wrap' : '-mx-2 -mt-1 overflow-x-auto px-2 pt-1 pb-1',
           )}
         >
           {genres.map((genre) => (

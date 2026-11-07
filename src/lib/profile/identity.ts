@@ -150,3 +150,7 @@ export function useIdentity(): IdentityView {
     accountReady: !accountsEnabled || resolved,
   }
 }
+
+export function useAccountId(): string | null {
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot).user?.id ?? null
+}

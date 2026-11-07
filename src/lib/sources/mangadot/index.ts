@@ -21,6 +21,7 @@ import type {
   MangaSummaryDto,
   SearchResponse,
 } from './dto'
+import { appOrigin } from '../app-origin'
 
 /** Where the site lives, and what "open in browser" must point at. */
 const SITE_URL = 'https://mangadot.net'
@@ -37,7 +38,7 @@ const SITE_URL = 'https://mangadot.net'
  */
 function resolveApiBase(): string {
   if (typeof location === 'undefined') return SITE_URL
-  return new URL('/mangadot', location.origin).toString()
+  return new URL('/mangadot', appOrigin()).toString()
 }
 
 const PER_PAGE = 24
@@ -298,10 +299,11 @@ export class Mangadot implements Source {
    * question the facets answer in a few hundred bytes — and returns the genre
    * strings in exactly the spelling the `genres` parameter expects.
    */
-  async fetchFilterData(): Promise<MangadotFilterData> {
+  async fetchFilterData(signal?: AbortSignal): Promise<MangadotFilterData> {
     try {
       const res = await this.http.fetch({
         url: `${this.apiBase}/api/search?facets=1&limit=1`,
+        signal,
       })
       const body = await res.json<SearchResponse>()
       const genres = (body.facets?.genres ?? [])
@@ -309,6 +311,7 @@ export class Mangadot implements Source {
         .filter(Boolean)
       if (genres.length) return { genres }
     } catch {
+      signal?.throwIfAborted()
       // Fall through to the snapshot.
     }
     return { genres: [...STATIC_GENRES] }

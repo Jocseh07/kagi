@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useLongPress } from '@/lib/use-long-press'
 import { VirtualList } from '@/components/virtual-list'
+import { displayTitle } from '@/lib/sources/display-title'
 import type { SManga } from '@/lib/sources/types'
 import {
   chunkRows,
@@ -221,7 +222,7 @@ export function VirtualMangaLayout<T>({
  * Height of a row before it has been measured.
  *
  * The cover is `aspect-[2/3]`, so its height follows from the card width; the
- * title below it is `mt-2` and clamped to two lines of `text-[0.8rem]` at
+ * title below it is `mt-2` and clamped to two lines of `text-tile` at
  * `leading-snug`. A guess rather than a promise — rows correct themselves on
  * mount — but a close one keeps the scrollbar from lurching on a long grid.
  */
@@ -286,7 +287,7 @@ function browseCoverUrl(manga: SManga): string | undefined {
   return manga.thumbnailUrl
 }
 
-interface BrowseItemProps {
+export interface BrowseItemProps {
   sourceId: string
   manga: SManga
   favorites: GridFavorites
@@ -358,8 +359,12 @@ const FAVORITE_HIDDEN_CLASS =
  *
  * The heart is a sibling of the link rather than a child of it — a button
  * inside an anchor is not markup a browser is obliged to make sense of.
+ *
+ * Exported for the global search rails, which lay their cards out by hand: a
+ * rail is capped at a dozen covers, so it has nothing to virtualize and cannot
+ * go through `MangaGrid`.
  */
-function MangaCard({ sourceId, manga, favorites }: BrowseItemProps) {
+export function MangaCard({ sourceId, manga, favorites }: BrowseItemProps) {
   const { inLibrary, disabled, setFavorite, hold, openSeries } =
     useFavoriteGesture(manga, favorites)
 
@@ -379,11 +384,10 @@ function MangaCard({ sourceId, manga, favorites }: BrowseItemProps) {
       >
         <MangaCover
           url={manga.thumbnailUrl}
-          title={manga.title}
           className="transition-colors group-hover:border-primary/60 group-focus-visible:border-primary"
         />
-        <p className="mt-2 line-clamp-2 text-[0.8rem] leading-snug text-foreground/90 transition-colors group-hover:text-foreground">
-          {manga.title}
+        <p className="mt-2 line-clamp-2 text-tile leading-snug text-foreground/90 transition-colors group-hover:text-foreground">
+          {displayTitle(manga.title, mangaSlug(manga))}
         </p>
       </Link>
 
@@ -438,7 +442,7 @@ function MangaBrowseRow({
       >
         <MangaListRow
           thumbnailUrl={manga.thumbnailUrl}
-          title={manga.title}
+          title={displayTitle(manga.title, mangaSlug(manga))}
           showCover={showCover}
           className="pr-9"
           // Nothing to say means no second line at all, exactly as the library
@@ -471,13 +475,15 @@ function MangaBrowseRow({
   )
 }
 
+/**
+ * Decorative: every cover sits beside its series title, so naming it again
+ * would have a screen reader read each title twice.
+ */
 export function MangaCover({
   url,
-  title,
   className,
 }: {
   url?: string
-  title: string
   className?: string
 }) {
   // The url that failed, rather than a boolean reset by an effect: a card in a
@@ -489,14 +495,14 @@ export function MangaCover({
   return (
     <div
       className={cn(
-        'relative aspect-[2/3] overflow-hidden rounded-lg border border-border bg-card',
+        'relative aspect-[2/3] overflow-hidden rounded-lg border border-border bg-card group-focus-visible:ring-3 group-focus-visible:ring-ring/50',
         className,
       )}
     >
       {url && !broken ? (
         <img
           src={url}
-          alt={title}
+          alt=""
           loading="lazy"
           // The grid scrolls covers in faster than the main thread can decode
           // them; off-thread decoding keeps that work out of the scroll.

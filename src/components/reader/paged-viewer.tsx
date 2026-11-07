@@ -1,11 +1,13 @@
-import type { MouseEvent } from 'react'
+import type { MouseEvent, ReactNode } from 'react'
 
 import type { Page } from '@/lib/sources/types'
 
 import { ReaderPage } from './reader-page'
 
 interface PagedViewerProps {
-  page: Page
+  page: Page | null
+  /** Shown in place of a page once the last chapter has been paged past. */
+  end?: ReactNode
   total: number
   rightToLeft: boolean
   onPrevious(): void
@@ -14,6 +16,7 @@ interface PagedViewerProps {
 
 export function PagedViewer({
   page,
+  end,
   total,
   rightToLeft,
   onPrevious,
@@ -31,7 +34,15 @@ export function PagedViewer({
 
   return (
     <div className="relative h-full w-full overflow-hidden">
-      <ReaderPage key={page.index} page={page} total={total} fit="screen" />
+      {end ? (
+        // Above the turn zones so its buttons work, but click-through around
+        // them so tapping either edge still turns back.
+        <div className="pointer-events-none relative z-10 flex h-full items-center justify-center p-6">
+          <div className="pointer-events-auto">{end}</div>
+        </div>
+      ) : page ? (
+        <ReaderPage key={page.index} page={page} total={total} fit="screen" />
+      ) : null}
 
       <button
         type="button"

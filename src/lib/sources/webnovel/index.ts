@@ -1,3 +1,4 @@
+import { parseDocument } from '../../text/document'
 import { DirectFetchTransport, RateLimiter } from '../../transport/direct-fetch'
 import type { HttpTransport } from '../../transport/types'
 import { sanitizeChapterHtml } from '../../text/sanitize'
@@ -13,6 +14,7 @@ import type {
   SManga,
   Source,
 } from '../types'
+import { appOrigin } from '../app-origin'
 
 /** Where the site lives, and what "open in browser" must point at. */
 const SITE_URL = 'https://www.webnovel.com'
@@ -42,7 +44,7 @@ const COVER_HOST = 'https://book-pic.webnovel.com'
  */
 function resolveApiBase(): string {
   if (typeof location === 'undefined') return SITE_URL
-  return new URL('/webnovel', location.origin).toString()
+  return new URL('/webnovel', appOrigin()).toString()
 }
 
 /**
@@ -88,6 +90,36 @@ const TYPE_VALUES = [
   ['Translated', '1'],
   ['Original', '2'],
 ] as const
+
+/**
+ * The browse page's own category tabs, as `[label, path segment]`.
+ *
+ * The site splits its catalogue by audience and reuses four labels across
+ * both halves, so the female duplicates carry a suffix and a bare `Fantasy`
+ * resolves to the larger male catalogue.
+ */
+const GENRE_VALUES: readonly (readonly [string, string])[] = [
+  ['Any', ''],
+  ['Urban', 'novel-urban-male'],
+  ['Eastern', 'novel-eastern-male'],
+  ['Games', 'novel-games-male'],
+  ['Fantasy', 'novel-fantasy-male'],
+  ['Sci-fi', 'novel-scifi-male'],
+  ['Horror', 'novel-horror-male'],
+  ['Sports', 'novel-sports-male'],
+  ['Action', 'novel-action-male'],
+  ['War', 'novel-war-male'],
+  ['Realistic', 'novel-realistic-male'],
+  ['History', 'novel-history-male'],
+  ['ACG', 'novel-acg-male'],
+  ['Urban (Female)', 'novel-urban-female'],
+  ['Fantasy (Female)', 'novel-fantasy-female'],
+  ['History (Female)', 'novel-history-female'],
+  ['Teen', 'novel-teen-female'],
+  ['LGBT+', 'novel-lgbt-female'],
+  ['Sci-fi (Female)', 'novel-scifi-female'],
+  ['General', 'novel-general-female'],
+]
 
 /**
  * Webnovel.
@@ -164,7 +196,14 @@ export class Webnovel implements Source {
     signal?: AbortSignal,
   ): Promise<MangasPage> {
     const term = query.trim()
-    if (!term) return await this.listing(paramsFrom(filters), page, signal)
+    if (!term) {
+      return await this.listing(
+        paramsFrom(filters),
+        page,
+        signal,
+        segmentFrom(filters),
+      )
+    }
 
     // Search takes no filters of its own — the tabs beside the results split
     // novels from comics and fan-fic, not by status or sort — so the sheet is
@@ -183,11 +222,12 @@ export class Webnovel implements Source {
     params: URLSearchParams,
     page: number,
     signal?: AbortSignal,
+    segment = 'novel',
   ): Promise<MangasPage> {
     params.set('pageIndex', String(page))
 
     const doc = await this.fetchDocument(
-      `${this.apiBase}/stories/novel?${params.toString()}`,
+      `${this.apiBase}/stories/${segment}?${params.toString()}`,
       signal,
     )
     return this.toPage(doc.querySelectorAll('.j_category_wrapper li'))
@@ -356,13 +396,13 @@ export class Webnovel implements Source {
         dateUpload: relativeToTimestamp(
           row.querySelector('small')?.textContent,
         ),
+        // The list marks paid chapters with a padlock. The chapter page is
+        // the authority — `parseChapterText` checks it there — but carrying
+        // the flag means nothing has to guess before the fetch.
+        locked: isLockedRow(row),
         memo: {
           bookId,
           chapterSlug: slugFromChapterHref(anchor.getAttribute('href')),
-          // The list marks paid chapters with a padlock. The chapter page is
-          // the authority — `parseChapterText` checks it there — but carrying
-          // the flag means nothing has to guess before the fetch.
-          locked: isLockedRow(row),
         },
       })
     }
@@ -405,7 +445,7 @@ export class Webnovel implements Source {
   }
 
   parseChapterText(raw: string): ChapterText {
-    const doc = new DOMParser().parseFromString(raw, 'text/html')
+    const doc = parseDocument(raw, 'text/html')
 
     const content = doc.querySelector('.cha-content')
     if (!content) {
@@ -447,6 +487,7 @@ export class Webnovel implements Source {
       },
       selectFilter('Status', STATUS_VALUES),
       selectFilter('Type', TYPE_VALUES),
+      selectFilter('Genre', GENRE_VALUES),
     ]
   }
 
@@ -471,18 +512,12 @@ export class Webnovel implements Source {
 
   // -------------------------------------------------------------- helpers --
 
-  /**
-   * Fetches a page and parses it.
-   *
-   * `DOMParser` is a browser API, so this source cannot run under Node without
-   * one being installed first — the reason it has no smoke script of its own.
-   */
   private async fetchDocument(
     url: string,
     signal?: AbortSignal,
   ): Promise<Document> {
     const res = await this.http.fetch({ url, signal })
-    return new DOMParser().parseFromString(await res.text(), 'text/html')
+    return parseDocument(await res.text(), 'text/html')
   }
 }
 
@@ -701,4 +736,19 @@ function paramsFrom(filters: FilterList): URLSearchParams {
   }
 
   return params
+}
+
+/**
+ * The catalogue path the sheet asks for.
+ *
+ * The genre is a path segment rather than a parameter, so it is read on its
+ * own and defaults to the full novel catalogue.
+ */
+function segmentFrom(filters: FilterList): string {
+  for (const filter of filters) {
+    if (filter.type === 'select' && filter.name === 'Genre') {
+      return GENRE_VALUES[filter.state]?.[1] || 'novel'
+    }
+  }
+  return 'novel'
 }

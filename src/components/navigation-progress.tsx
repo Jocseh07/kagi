@@ -61,7 +61,7 @@ export function NavigationProgress() {
           component's track is cleared and only the indicator shows. */}
       <Progress
         value={progress}
-        className="h-full rounded-none bg-transparent [&>[data-slot=progress-indicator]]:shadow-[0_0_8px_1px_var(--primary)] [&>[data-slot=progress-indicator]]:duration-200 [&>[data-slot=progress-indicator]]:ease-out"
+        className="h-full rounded-none bg-transparent [&>[data-slot=progress-indicator]]:duration-200 [&>[data-slot=progress-indicator]]:ease-out"
       />
     </div>
   )

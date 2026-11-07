@@ -93,7 +93,7 @@ export function ThemeDialog({ open, onOpenChange, themes }: ThemeDialogProps) {
                   onClick={() => void themes.refresh()}
                   disabled={themes.refreshing}
                 >
-                  <RefreshCw className={cn(themes.refreshing && 'animate-spin')} />
+                  <RefreshCw className={cn(themes.refreshing && 'animate-spin motion-reduce:animate-none')} />
                   {themes.refreshing ? 'Checking…' : 'Check for new'}
                 </Button>
               </div>

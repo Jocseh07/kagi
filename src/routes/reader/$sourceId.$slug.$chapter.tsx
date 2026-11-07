@@ -11,29 +11,39 @@ import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
-import { ChapterPicker, chapterKeyOf } from '@/components/reader/chapter-picker'
+import { ChapterDownloadButton } from '@/components/download/chapter-download-button'
+import { useQueueItemsByChapterUrl } from '@/components/download/queue-actions'
+import { ChapterPicker } from '@/components/reader/chapter-picker'
 import { ContinuousViewer } from '@/components/reader/continuous-viewer'
 import type { ContinuousViewerHandle } from '@/components/reader/continuous-viewer'
+import { PageScrubber } from '@/components/reader/page-scrubber'
 import { PagedViewer } from '@/components/reader/paged-viewer'
-import { ReaderFullscreen } from '@/components/reader/reader-fullscreen'
+import { ReaderIdleVeil } from '@/components/reader/reader-idle-veil'
 import {
   isPagedMode,
   isRightToLeft,
-  useFullscreenReader,
+  readerSurfaceStyle,
+  useIdleDim,
   useReaderMode,
+  useReaderSurface,
   useResumeBehavior,
   useTextReaderSettings,
-} from '@/components/reader/reader-settings'
+  useWordStarts,
+} from '@/lib/reader/reader-settings'
+import { ReaderSettingsSheet } from '@/components/reader/reader-settings-sheet'
 import { ReaderToolbar } from '@/components/reader/reader-toolbar'
 import { ResumeNotice } from '@/components/reader/resume-notice'
 import { TextViewer } from '@/components/reader/text-viewer'
 import type { TextViewerHandle } from '@/components/reader/text-viewer'
 import { ErrorPanel, Spinner, ToolbarButton } from '@/components/reader/ui'
+import { Progress } from '@/components/ui/progress'
 import { useImagePreload, warmImages } from '@/components/reader/use-image-preload'
-import { useFullscreenScreen } from '@/components/reader/use-fullscreen-reader'
+import { useIdleDimScreen } from '@/components/reader/use-idle-dim'
 import { useReaderChrome } from '@/components/reader/use-reader-chrome'
 import { useReadingProgress } from '@/components/reader/use-reading-progress'
-import { requestSync } from '@/lib/sync/sync-events'
+import { useSpotSaver } from '@/components/reader/use-spot-saver'
+import { useStandalone } from '@/lib/pwa/installed'
+import { requestSync } from '@/lib/sync/sync-request'
 import {
   UNGROUPED_LABEL,
   scanlatorKey,
@@ -41,7 +51,7 @@ import {
 import { readerScope } from '@/lib/chapters/scope'
 import { useChapterFilters } from '@/lib/chapters/use-chapter-filters'
 import { recordChapterOpened } from '@/lib/db/history'
-import { useDatabaseReady } from '@/lib/db/provider'
+import { useDatabase } from '@/lib/db/provider'
 import { dbKeys } from '@/lib/db/query-keys'
 import {
   getMangaByUrl,
@@ -57,12 +67,16 @@ import { deleteSavedAfterRead } from '@/lib/offline/delete-after-read'
 import { getSource } from '@/lib/sources/registry'
 import { isTextSource } from '@/lib/sources/types'
 import type { Page, SChapter, SManga } from '@/lib/sources/types'
+import { chapterKeyOf } from '@/lib/reader/chapter-key'
+import { readPageSpot, savePageOffset } from '@/lib/reader/page-offset'
+import { spotIsNewer } from '@/lib/reader/page-offset-model'
 import {
   chapterContentQueryOptions,
   chapterStubOf,
   findStoredChapter,
   mangaStubOf,
   pagesQueryOptions,
+  storedChapterStateQueryOptions,
   storedUpdateQueryOptions,
   textQueryOptions,
 } from '@/lib/reader/chapter-queries'
@@ -70,6 +84,7 @@ import {
   NOVEL_PROGRESS_SCALE,
   permilleToPercent,
 } from '@/lib/text/progress'
+import { describeError } from '@/lib/ui/describe-error'
 
 export const Route = createFileRoute('/reader/$sourceId/$slug/$chapter')({
   component: ReaderRoute,
@@ -102,6 +117,20 @@ const NEXT_CHAPTER_WARM_PAGES = 2
  */
 const MARK_READ_AT = 0.7
 
+/**
+ * How far apart, in permille, a novel's saved paragraph spot and its stored
+ * position may be and still describe the same place. The stored position moves
+ * in whole-percent steps while scrolling, so it trails the exact one by under
+ * ten.
+ */
+const NOVEL_SPOT_TOLERANCE = 15
+
+/**
+ * Longest the chapter stays hidden waiting for the database to open, so a boot
+ * that never finishes cannot hold the reader blank.
+ */
+const RESUME_WAIT_MS = 4000
+
 /** The part of a stored chapter row the reader actually reads. */
 function progressOf(row: Chapter) {
   return {
@@ -109,6 +138,7 @@ function progressOf(row: Chapter) {
     lastPageRead: row.lastPageRead,
     read: row.read,
     pageCount: row.pageCount,
+    updatedAt: row.updatedAt,
   }
 }
 
@@ -117,14 +147,20 @@ function ReaderRoute() {
   const navigate = useNavigate()
   const router = useRouter()
   const queryClient = useQueryClient()
-  const databaseReady = useDatabaseReady()
+  const database = useDatabase()
+  const databaseReady = database.status === 'ready'
+  const databaseFailed = database.status === 'error'
   const [incognito] = useIncognito()
 
   const [mode] = useReaderMode()
   const [resumeBehavior] = useResumeBehavior()
   const [textSettings] = useTextReaderSettings()
-  const [fullscreen] = useFullscreenReader()
-  const { dimmed } = useFullscreenScreen(fullscreen)
+  const [wordStarts, updateWordStarts] = useWordStarts()
+  const [dimIdle] = useIdleDim()
+  const [surface] = useReaderSurface()
+  const surfaceSkin = readerSurfaceStyle(surface)
+  const standalone = useStandalone()
+  const { dimmed } = useIdleDimScreen(dimIdle && standalone)
   /**
    * Position in the chapter. A page index for a comic, and a permille scroll
    * position for a novel — see `lib/text/progress`. One piece of state rather
@@ -144,12 +180,29 @@ function ReaderRoute() {
     at: number
   } | null>(null)
   const [resumeApplied, setResumeApplied] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<ContinuousViewerHandle>(null)
   const textViewerRef = useRef<TextViewerHandle>(null)
   // Mirrors `currentIndex` for the effects that must not re-run per page turn.
   const currentIndexRef = useRef(0)
   const resumedChapter = useRef<string | null>(null)
+  /** The open chapter, for handlers that must not change identity with it. */
+  const chapterRef = useRef(chapter)
+  useLayoutEffect(() => {
+    chapterRef.current = chapter
+  }, [chapter])
+  /** Paged past the last page, onto the end-of-chapter panel. */
+  const [pagedEnd, setPagedEnd] = useState(false)
+  const [seenChapter, setSeenChapter] = useState(chapter)
+  // Adjusted during render so the chapter, its page and the resume flag all
+  // change in one commit: progress is never saved against a mixed pair.
+  if (seenChapter !== chapter) {
+    setSeenChapter(chapter)
+    setPagedEnd(false)
+    setCurrentIndex(0)
+    setResumeApplied(false)
+  }
 
   const source = useMemo(() => {
     try {
@@ -180,6 +233,11 @@ function ReaderRoute() {
     [source],
   )
   const isNovel = textSource !== null
+  // Novels always scroll, whatever the comic reading mode is set to.
+  const paged = !isNovel && isPagedMode(mode)
+  const rightToLeft = isRightToLeft(mode)
+  /** Comics in Continuous mode. */
+  const stripMode = !isNovel && !paged
 
   const pagesQuery = useQuery({
     ...pagesQueryOptions(source, sourceId, slug, chapter),
@@ -193,6 +251,16 @@ function ReaderRoute() {
 
   /** The query actually driving this reader, so the states below read once. */
   const contentQuery = isNovel ? textQuery : pagesQuery
+
+  // Past ten seconds a bare spinner reads as stuck, so the wait names its cause.
+  const [slowChapter, setSlowChapter] = useState<string | null>(null)
+  const loading = contentQuery.isPending
+  const slow = loading && slowChapter === chapter
+  useEffect(() => {
+    if (!loading) return
+    const timer = window.setTimeout(() => setSlowChapter(chapter), 10_000)
+    return () => window.clearTimeout(timer)
+  }, [loading, chapter])
 
   // Chapter navigation is a separate query on purpose: if it fails the chapter
   // still reads, it just loses prev/next and the picker. It shares the series
@@ -230,6 +298,26 @@ function ReaderRoute() {
     () => details?.chapters.find((item) => chapterKeyOf(item) === chapter) ?? null,
     [details, chapter],
   )
+
+  /** Read state of the series' stored chapters, for the chapter list's marks. */
+  const chapterStatesQuery = useQuery({
+    ...storedChapterStateQueryOptions(sourceId, slug),
+    enabled: databaseReady,
+    staleTime: 0,
+  })
+
+  /**
+   * Whether this chapter is saved on the device. Under the `chapterSaved` key,
+   * which the save button and the delete-after-read sweep both invalidate.
+   */
+  const savedQuery = useQuery({
+    queryKey: dbKeys.chapterSaved(sourceId, slug, chapter),
+    queryFn: async () =>
+      (await findStoredChapter(sourceId, manga.url, chapter))?.savedAt != null,
+    enabled: databaseReady,
+    staleTime: 0,
+  })
+  const queueItems = useQueueItemsByChapterUrl(sourceId)
 
   /**
    * The offline save needs a chapter row to hang the page list on, and the
@@ -415,15 +503,14 @@ function ReaderRoute() {
   const title = details?.manga.title ?? slug
   const chapterName = ascending[position]?.name ?? `Chapter ${chapter}`
 
-  const paged = isPagedMode(mode)
-  const rightToLeft = isRightToLeft(mode)
-
   /**
    * The chapter runs edge to edge, so the browser's own bars are painted out to
    * match it rather than left sitting in the app's surface colour: the status
    * bar and, where the platform follows this, the navigation bar read as part
-   * of the page. Restored on the way out from whichever theme is actually
-   * active, so a theme changed while reading is what comes back.
+   * of the page. The colour is read off the reader's own surface, so a muted or
+   * light reader does not get a black strip above it. Restored on the way out
+   * from whichever theme is actually active, so a theme changed while reading
+   * is what comes back.
    *
    * Touch devices only. On a desktop there are no bars pressed against the
    * chapter to blend with — the value would only reach the window frame, where
@@ -432,18 +519,23 @@ function ReaderRoute() {
   useEffect(() => {
     if (!globalThis.matchMedia?.('(pointer: coarse)').matches) return
 
-    overrideThemeColor('#000000')
+    const root = rootRef.current
+    // A resolved colour function, not a hex — the same tolerance
+    // `lib/theme/apply` already documents for a theme's authored value.
+    const painted = root ? getComputedStyle(root).backgroundColor : ''
+    overrideThemeColor(painted || '#000000')
     return () => applyThemeColor(resolvedMode())
-  }, [])
+  }, [surface])
 
   /**
    * The scroll element is created by whichever viewer is mounted, so the chrome
    * has to re-attach its listener whenever that changes — which viewer, and
    * whether the chapter has loaded at all, is the whole of it.
    */
+  const viewerKey = `${isNovel ? 'text' : paged ? 'paged' : 'strip'}:${contentQuery.isSuccess}:${chapter}`
   const { visible: chromeVisible, onSurfaceTap } = useReaderChrome(
     scrollRef,
-    `${isNovel ? 'text' : paged ? 'paged' : 'strip'}:${contentQuery.isSuccess}:${chapter}`,
+    viewerKey,
   )
 
   /**
@@ -492,26 +584,22 @@ function ReaderRoute() {
 
   /** Moves the reader to a position, in whichever viewer is mounted. */
   const jumpTo = useCallback(
-    (index: number) => {
+    (index: number, offset = 0) => {
       handleIndexChange(index)
       if (isNovel) {
         textViewerRef.current?.scrollToPermille(index)
         return
       }
       if (paged) return
-      viewerRef.current?.scrollTo(index)
+      viewerRef.current?.scrollTo(index, offset)
     },
     [handleIndexChange, paged, isNovel],
   )
 
+  // Every chapter opens at its top; the resume below moves it from there.
   useEffect(() => {
     currentIndexRef.current = 0
-    setCurrentIndex(0)
-    setResumeApplied(false)
     scrollRef.current?.scrollTo({ top: 0 })
-    // The notice is not cleared here: it carries the chapter it belongs to, so
-    // a stale one simply stops matching, and a fresh one survives this reset
-    // whichever order the two run in.
   }, [chapter])
 
   // Switching viewer relays out every page; hold the reader on the same one.
@@ -541,30 +629,59 @@ function ReaderRoute() {
 
     // A chapter read to the end reopens at the start rather than on its last
     // page, which is where it was left but not where anyone wants to resume.
-    const target = progress.read
-      ? 0
-      : Math.min(progress.lastPageRead, pageCount - 1)
-    if (target > 0) {
-      jumpTo(target)
-      if (resumeBehavior === 'notify') setResumeNotice({ chapter, at: target })
+    const spot = progress.read ? null : readPageSpot(progress.id)
+    // The device's own spot outranks the row only when the row's write never
+    // landed after it, as when the tab was killed mid-write.
+    const stored =
+      spot && spotIsNewer(spot, progress.updatedAt)
+        ? spot.page
+        : progress.lastPageRead
+    const target = progress.read ? 0 : Math.max(0, Math.min(stored, pageCount - 1))
+    const spotHere =
+      spot !== null &&
+      (isNovel
+        ? Math.abs(spot.page - target) <= NOVEL_SPOT_TOLERANCE
+        : spot.page === target)
+
+    let anchored = false
+    if (isNovel && spotHere && spot.block !== undefined) {
+      anchored = textViewerRef.current?.scrollToAnchor(spot.block, spot.offset) ?? false
+      if (anchored) handleIndexChange(target)
+    }
+    if (!anchored) {
+      const offset = stripMode && spotHere ? spot.offset : 0
+      if (target > 0 || offset > 0) jumpTo(target, offset)
+    }
+    if (target > 0 && resumeBehavior === 'notify') {
+      setResumeNotice({ chapter, at: target })
     }
     setResumeApplied(true)
-  }, [progress, pageCount, chapter, jumpTo, resumeBehavior])
+  }, [progress, pageCount, chapter, jumpTo, resumeBehavior, stripMode, isNovel, handleIndexChange])
 
   /**
-   * There is no position to wait for when the database is unavailable or the
+   * There is no position to wait for when the database failed to open or the
    * lookup failed, and the chapter must not stay hidden behind a resume that
-   * is never coming.
+   * is never coming. A database still opening is waited for: the chapter text
+   * often arrives first, and giving up then opens it at the top.
    */
   useEffect(() => {
     if (resumeApplied) return
+    const giveUp = () => {
+      resumedChapter.current = chapter
+      setResumeApplied(true)
+    }
     const nothingStored = progressQuery.isSuccess && progressQuery.data === null
-    if (databaseReady && !progressQuery.isError && !nothingStored) return
-    resumedChapter.current = chapter
-    setResumeApplied(true)
+    if (databaseFailed || progressQuery.isError || nothingStored) {
+      giveUp()
+      return
+    }
+    if (databaseReady) return
+    const timer = window.setTimeout(giveUp, RESUME_WAIT_MS)
+    return () => window.clearTimeout(timer)
   }, [
     resumeApplied,
     databaseReady,
+    databaseFailed,
     progressQuery.isError,
     progressQuery.isSuccess,
     progressQuery.data,
@@ -593,7 +710,7 @@ function ReaderRoute() {
    *
    * Someone trying a series by its prologue has read it whether or not they
    * reach the last page, and whether or not the series is in their library —
-   * the entry is what leads them back to it. Reading forward into the next
+   * the entry is what leads them back to it. Moving on to the next
    * chapter re-resolves `progress`, so each chapter entered records its own.
    */
   useEffect(() => {
@@ -613,34 +730,38 @@ function ReaderRoute() {
     )
   }, [databaseReady, incognito, progress, queryClient])
 
-  /** Set once this chapter is read, and acted on when the reader leaves it. */
-  const readChapterId = useRef<string | null>(null)
+  /** Chapters read since the open chapter last changed, acted on when it does. */
+  const readChapterIds = useRef(new Set<string>())
 
-  const onChapterRead = useCallback(() => {
-    readChapterId.current = progress?.id ?? null
-    void queryClient.invalidateQueries({ queryKey: dbKeys.history })
-    void queryClient.invalidateQueries({ queryKey: dbKeys.allChapters })
-    void queryClient.invalidateQueries({ queryKey: dbKeys.library })
-    // A finished chapter is the one fact worth sending at once; the request is
-    // rate-limited and a no-op on a build or session that cannot sync.
-    requestSync('chapter-read')
-  }, [queryClient, progress])
+  const onChapterRead = useCallback(
+    (id: string) => {
+      readChapterIds.current.add(id)
+      void queryClient.invalidateQueries({ queryKey: dbKeys.history })
+      void queryClient.invalidateQueries({ queryKey: dbKeys.allChapters })
+      void queryClient.invalidateQueries({ queryKey: dbKeys.library })
+      // A finished chapter is the one fact worth sending at once; the request is
+      // rate-limited and a no-op on a build or session that cannot sync.
+      requestSync('chapter-read')
+    },
+    [queryClient],
+  )
 
   /**
-   * Frees a read chapter's download, if that is switched on.
+   * Frees read chapters' downloads, if that is switched on.
    *
-   * Deliberately on the way out — moving to another chapter or leaving the
-   * reader — rather than the moment the last page lands: deleting the pages
-   * under an open chapter would blank it on the next reload.
+   * Deliberately on the way out, when another chapter opens or the reader
+   * closes, rather than the moment the last page lands: a read chapter can
+   * still be scrolled back through, and deleting its pages would blank it offline.
    */
   useEffect(() => {
+    const read = readChapterIds.current
     return () => {
-      const chapterId = readChapterId.current
-      readChapterId.current = null
-      if (!chapterId) return
-      void deleteSavedAfterRead([chapterId]).then(() => {
+      const ids = [...read]
+      read.clear()
+      if (ids.length === 0) return
+      void deleteSavedAfterRead(ids).then(() => {
         void queryClient.invalidateQueries({
-          queryKey: dbKeys.chapterSaved(sourceId, slug, chapter),
+          queryKey: dbKeys.chapterSavedIn(sourceId, slug),
         })
         void queryClient.invalidateQueries({ queryKey: dbKeys.savedChapters })
         void queryClient.invalidateQueries({ queryKey: dbKeys.storage })
@@ -649,7 +770,7 @@ function ReaderRoute() {
     }
   }, [queryClient, sourceId, slug, chapter])
 
-  const { markReadNow } = useReadingProgress({
+  const { markReadNow, saveNow } = useReadingProgress({
     chapterId: progress?.id ?? null,
     pageIndex: currentIndex,
     pageCount,
@@ -669,6 +790,62 @@ function ReaderRoute() {
   useEffect(() => {
     advanceState.current = { pageCount, nextChapter }
   }, [pageCount, nextChapter])
+
+  // Tagged with its chapter so a spot is never stored against another
+  // chapter's row while the two are changing over.
+  const spotState = useRef({
+    id: progress?.id ?? null,
+    chapter,
+    on: false,
+    kind: 'paged' as 'text' | 'strip' | 'paged',
+  })
+  useEffect(() => {
+    spotState.current = {
+      id: progress?.id ?? null,
+      chapter,
+      on: databaseReady && resumeApplied && !incognito,
+      kind: isNovel ? 'text' : stripMode ? 'strip' : 'paged',
+    }
+  }, [progress, chapter, databaseReady, resumeApplied, incognito, isNovel, stripMode])
+
+  /**
+   * Writes where the reader is: the local spot first, synchronously, then the
+   * database. A tab killed in between leaves the newer local spot, which the
+   * resume above prefers over the older row.
+   */
+  const saveSpot = useCallback(() => {
+    const { id, chapter: current, on, kind } = spotState.current
+    if (!on || !id || current !== chapterRef.current) return
+    const at = Date.now()
+    if (kind === 'text') {
+      const spot = textViewerRef.current?.spot()
+      if (!spot) return
+      savePageOffset(id, spot.permille, spot.offset, { block: spot.block, at })
+    } else if (kind === 'strip') {
+      const spot = viewerRef.current?.position()
+      if (!spot) return
+      savePageOffset(id, spot.pageIndex, spot.offset, { at })
+    } else {
+      savePageOffset(id, currentIndexRef.current, 0, { at })
+    }
+    saveNow()
+  }, [saveNow])
+
+  const spotSaver = useSpotSaver(saveSpot)
+
+  // A scroll that never pauses still gets saved, once per heartbeat.
+  useEffect(() => {
+    const container = scrollRef.current
+    if (!container) return
+    const onScroll = () => spotSaver.request()
+    container.addEventListener('scroll', onScroll, { passive: true })
+    return () => container.removeEventListener('scroll', onScroll)
+  }, [spotSaver, viewerKey])
+
+  // A page turn is a settled position of its own.
+  useEffect(() => {
+    if (paged && resumeApplied) spotSaver.settle()
+  }, [paged, resumeApplied, currentIndex, pagedEnd, spotSaver])
 
   /**
    * Moving on to the next chapter: the bar's arrow, Shift+→, and the button at
@@ -702,17 +879,19 @@ function ReaderRoute() {
       scrollByViewport(1)
       return
     }
+    if (pagedEnd) return
     if (currentIndex < pageCount - 1) {
       handleIndexChange(currentIndex + 1)
       return
     }
-    advanceChapter()
+    // The chapter ends on its own panel; moving on is the panel's button.
+    if (pageCount > 0) setPagedEnd(true)
   }, [
     paged,
+    pagedEnd,
     scrollByViewport,
     currentIndex,
     pageCount,
-    advanceChapter,
     handleIndexChange,
   ])
 
@@ -721,19 +900,23 @@ function ReaderRoute() {
       scrollByViewport(-1)
       return
     }
-    if (currentIndex > 0) {
-      handleIndexChange(currentIndex - 1)
+    if (pagedEnd) {
+      setPagedEnd(false)
       return
     }
-    if (previousChapter) openChapter(previousChapter)
+    if (currentIndex > 0) handleIndexChange(currentIndex - 1)
   }, [
     paged,
+    pagedEnd,
     scrollByViewport,
     currentIndex,
-    previousChapter,
-    openChapter,
     handleIndexChange,
   ])
+
+  // Paged, the page on screen is this state alone; the mirror follows it.
+  useEffect(() => {
+    if (paged) currentIndexRef.current = currentIndex
+  }, [paged, currentIndex])
 
   const goNextChapter = advanceChapter
 
@@ -770,6 +953,11 @@ function ReaderRoute() {
           event.preventDefault()
           goPrevious()
           break
+        case 'b':
+        case 'B':
+          if (!isNovel || event.metaKey || event.ctrlKey || event.altKey) break
+          updateWordStarts({ enabled: !wordStarts.enabled })
+          break
         // Shift is handled inside the case rather than as a case of its own:
         // the plain arrows would otherwise swallow it and turn a page.
         case 'ArrowRight':
@@ -802,6 +990,9 @@ function ReaderRoute() {
     goNextChapter,
     goPreviousChapter,
     rightToLeft,
+    isNovel,
+    wordStarts.enabled,
+    updateWordStarts,
   ])
 
   // Handed to the viewer as `footer`. Rebuilding it every render would change
@@ -836,14 +1027,17 @@ function ReaderRoute() {
   )
 
   return (
-    // The reader is a dark surface regardless of the app theme: `dark` here
-    // re-scopes the whole palette for everything inside, so every shared token
-    // below resolves to the chosen theme's own dark values.
+    // The palette is forced dark for every background except "Follow the app":
+    // `dark` here re-scopes it for everything inside, so every shared token
+    // below resolves to the chosen theme's own dark values. The background
+    // itself arrives as a `--background` override, so `bg-background` stays the
+    // class and every descendant reading that token follows.
     <div
-      className="dark fixed inset-0 z-50 bg-background text-foreground"
-      data-fullscreen={fullscreen || undefined}
+      ref={rootRef}
+      className={`${surfaceSkin.className} fixed inset-0 z-50 bg-background text-foreground`}
+      style={surfaceSkin.style}
     >
-      {fullscreen ? <ReaderFullscreen dimmed={dimmed} /> : null}
+      {dimIdle && standalone ? <ReaderIdleVeil dimmed={dimmed} /> : null}
       {/* Over the page, not above it: hiding it then costs the chapter no
           reflow, so nothing under it moves while it comes and goes.
 
@@ -853,7 +1047,7 @@ function ReaderRoute() {
           them, and the strip they occupy reads as part of it. */}
       <div
         aria-hidden={!chromeVisible}
-        className={`absolute inset-x-0 top-0 z-20 bg-card/90 pt-[env(safe-area-inset-top)] backdrop-blur transition-[transform,opacity] duration-200 in-data-fullscreen:top-[calc(1.5rem+env(safe-area-inset-top))] in-data-fullscreen:pt-0 ${
+        className={`absolute inset-x-0 top-0 z-20 bg-card/90 pt-[env(safe-area-inset-top)] transition-[transform,opacity] duration-200 motion-reduce:transition-none ${
           chromeVisible
             ? ''
             : 'pointer-events-none -translate-y-full opacity-0'
@@ -861,10 +1055,27 @@ function ReaderRoute() {
       >
         <ReaderToolbar
           title={title}
-          chapterName={chapterName}
-          pageIndicator={progressLabel()}
+          subtitle={
+            listedChapter?.scanlator
+              ? `${chapterName} · ${listedChapter.scanlator}`
+              : chapterName
+          }
           progressPercent={progressPercent()}
           onExit={exitToSeries}
+          actions={
+            // The series page's rule: local files are already on disk, and a
+            // locked chapter can only come back locked.
+            source && details && listedChapter && !source.isLocal && !listedChapter.locked ? (
+              <ChapterDownloadButton
+                sourceId={sourceId}
+                manga={details.manga}
+                chapter={listedChapter}
+                saved={savedQuery.data ?? false}
+                item={queueItems.get(listedChapter.url)}
+                className="size-10 max-sm:size-10"
+              />
+            ) : null
+          }
         />
       </div>
 
@@ -877,84 +1088,111 @@ function ReaderRoute() {
           {renderBody()}
         </div>
 
-        {/* All three ways to change chapter, floating over the page rather than
-            in the toolbar: the moment you want them is the moment you reach the
-            bottom. The wrapper stays click-through so it never eats a page tap;
-            only the bar itself is interactive. */}
-        <div
-          aria-hidden={!chromeVisible}
-          className={`pointer-events-none absolute inset-x-0 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-20 flex justify-center px-3 transition-[transform,opacity] duration-200 in-data-fullscreen:bottom-[calc(2.5rem+env(safe-area-inset-bottom))] ${
-            chromeVisible
-              ? ''
-              : 'translate-y-[calc(100%+1rem+env(safe-area-inset-bottom))] opacity-0'
-          }`}
-        >
+        {/* A hairline of progress while the bars are away, so position is
+            never wholly out of sight. */}
+        {!chromeVisible && progressPercent() !== null ? (
+          <Progress
+            value={progressPercent() ?? 0}
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-[env(safe-area-inset-top)] z-20 h-0.5 rounded-none bg-transparent [&>[data-slot=progress-indicator]]:bg-primary/70"
+          />
+        ) : null}
+
+        {/* Moving through the chapter and between chapters, floating over the
+            page rather than in the title bar, and brought up with a tap. The
+            column stays click-through so it never eats a page tap; only the
+            bar and the notice take input. */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-20 flex flex-col items-center gap-2 px-3">
+          {/* Held back until the chapter is on screen, so its few seconds are
+              spent being read rather than sitting over a blank reader. Keyed by
+              chapter so each one gets its own countdown from that moment.
+              Stacked above the bar rather than drawn on top of it. */}
+          {resumeNotice && resumeNotice.chapter === chapter && !resumePending && (
+            <ResumeNotice
+              key={chapter}
+              position={
+                isNovel
+                  ? `${permilleToPercent(resumeNotice.at)}%`
+                  : `page ${resumeNotice.at + 1}`
+              }
+              onStartOver={() => {
+                jumpTo(0)
+                setResumeNotice(null)
+              }}
+              onDismiss={() => setResumeNotice(null)}
+            />
+          )}
+
           <div
-            className={`flex max-w-full items-center gap-1.5 rounded-xl border border-border bg-card/95 px-1.5 py-1.5 shadow-xl backdrop-blur ${
-              chromeVisible ? 'pointer-events-auto' : 'pointer-events-none'
+            aria-hidden={!chromeVisible}
+            className={`w-full max-w-xl transition-[transform,opacity] duration-200 motion-reduce:transition-none ${
+              chromeVisible
+                ? ''
+                : 'translate-y-[calc(100%+1rem+env(safe-area-inset-bottom))] opacity-0'
             }`}
           >
-            <ToolbarButton
-              variant="solid"
-              className="size-8 p-0"
-              disabled={!previousChapter}
-              title="Previous chapter (Shift+←)"
-              aria-label="Previous chapter"
-              onClick={() => previousChapter && openChapter(previousChapter)}
+            <div
+              className={`rounded-xl border border-border bg-card/95 p-1.5 shadow-xl ${
+                chromeVisible ? 'pointer-events-auto' : 'pointer-events-none'
+              }`}
             >
-              <ChevronLeft aria-hidden className="size-4" />
-            </ToolbarButton>
+              {pageCount > 0 && contentQuery.isSuccess ? (
+                <PageScrubber
+                  kind={isNovel ? 'percent' : 'pages'}
+                  value={isNovel ? permilleToPercent(currentIndex) : currentIndex}
+                  total={pageCount}
+                  rightToLeft={paged && rightToLeft}
+                  onChange={(next) => {
+                    setPagedEnd(false)
+                    jumpTo(isNovel ? next * 10 : next)
+                  }}
+                />
+              ) : null}
 
-            <ChapterPicker
-              chapters={descending}
-              currentKey={chapter}
-              groupLabel={groupLabel}
-              onSelect={openChapterKey}
-            />
+              <div className="flex items-center gap-1.5">
+                <ToolbarButton
+                  variant="solid"
+                  className="size-10 p-0"
+                  disabled={!previousChapter}
+                  title="Previous chapter (Shift+←)"
+                  aria-label="Previous chapter"
+                  onClick={() => previousChapter && openChapter(previousChapter)}
+                >
+                  <ChevronLeft aria-hidden className="size-5" />
+                </ToolbarButton>
 
-            <ToolbarButton
-              variant={nextChapter ? 'accent' : 'solid'}
-              className="size-8 p-0"
-              disabled={!nextChapter}
-              title="Next chapter (Shift+→)"
-              aria-label="Next chapter"
-              onClick={advanceChapter}
-            >
-              <ChevronRight aria-hidden className="size-4" />
-            </ToolbarButton>
+                <ChapterPicker
+                  chapters={descending}
+                  currentKey={chapter}
+                  groupLabel={groupLabel}
+                  states={chapterStatesQuery.data}
+                  novel={isNovel}
+                  onSelect={openChapterKey}
+                />
+
+                <ToolbarButton
+                  variant={nextChapter ? 'accent' : 'solid'}
+                  className="size-10 p-0"
+                  disabled={!nextChapter}
+                  title="Next chapter (Shift+→)"
+                  aria-label="Next chapter"
+                  onClick={advanceChapter}
+                >
+                  <ChevronRight aria-hidden className="size-5" />
+                </ToolbarButton>
+
+                <span aria-hidden className="mx-0.5 h-6 w-px shrink-0 bg-border" />
+
+                <ReaderSettingsSheet novel={isNovel} />
+              </div>
+            </div>
           </div>
         </div>
-
-        {/* Held back until the chapter is on screen, so its few seconds are
-            spent being read rather than sitting over a blank reader. Keyed by
-            chapter so each one gets its own countdown from that moment. */}
-        {resumeNotice && resumeNotice.chapter === chapter && !resumePending && (
-          <ResumeNotice
-            key={chapter}
-            position={
-              isNovel
-                ? `${permilleToPercent(resumeNotice.at)}%`
-                : `page ${resumeNotice.at + 1}`
-            }
-            onStartOver={() => {
-              jumpTo(0)
-              setResumeNotice(null)
-            }}
-            onDismiss={() => setResumeNotice(null)}
-          />
-        )}
       </div>
     </div>
   )
 
-  /** "33%" for either content kind, an em dash before the chapter loads. */
-  function progressLabel(): string {
-    const percent = progressPercent()
-    if (percent === null) return '—'
-    return `${Math.round(percent)}%`
-  }
-
-  /** The same position as `progressLabel`, on a 0–100 scale for the bar. */
+  /** How far through the chapter, 0–100, for the bars. Null before it loads. */
   function progressPercent(): number | null {
     if (pageCount === 0) return null
     if (isNovel) return permilleToPercent(currentIndex)
@@ -977,7 +1215,12 @@ function ReaderRoute() {
     if (contentQuery.isPending) {
       return (
         <Centered>
-          <Spinner label="Loading chapter" />
+          <div className="flex flex-col items-center gap-2">
+            <Spinner label="Loading chapter" />
+            {slow ? (
+              <p className="text-xs text-muted-foreground">{source.name} is slow to answer.</p>
+            ) : null}
+          </div>
         </Centered>
       )
     }
@@ -987,7 +1230,7 @@ function ReaderRoute() {
         <Centered>
           <ErrorPanel
             title="Could not load this chapter"
-            detail={messageOf(contentQuery.error)}
+            detail={describeError(contentQuery.error)}
           >
             <ToolbarButton
               variant="solid"
@@ -1008,18 +1251,26 @@ function ReaderRoute() {
             <ErrorPanel
               title="No text"
               detail="The source returned an empty chapter."
-            />
+            >
+              <ToolbarButton variant="solid" onClick={() => void contentQuery.refetch()}>
+                Try again
+              </ToolbarButton>
+              <ToolbarButton onClick={exitToSeries}>Back to series</ToolbarButton>
+            </ErrorPanel>
           </Centered>
         )
       }
 
       return (
         <TextViewer
+          key={chapter}
           ref={textViewerRef}
           html={text.html}
           settings={textSettings}
+          wordStarts={wordStarts.enabled ? wordStarts.strength : null}
           scrollRef={scrollRef}
           onPositionChange={handleIndexChange}
+          onScrollSettle={spotSaver.settle}
           footer={endOfChapter}
         />
       )
@@ -1031,7 +1282,12 @@ function ReaderRoute() {
           <ErrorPanel
             title="No pages"
             detail="The source returned an empty page list for this chapter."
-          />
+          >
+            <ToolbarButton variant="solid" onClick={() => void contentQuery.refetch()}>
+              Try again
+            </ToolbarButton>
+            <ToolbarButton onClick={exitToSeries}>Back to series</ToolbarButton>
+          </ErrorPanel>
         </Centered>
       )
     }
@@ -1039,7 +1295,8 @@ function ReaderRoute() {
     if (paged) {
       return (
         <PagedViewer
-          page={pages[Math.min(currentIndex, pages.length - 1)]}
+          page={pagedEnd ? null : pages[Math.min(currentIndex, pages.length - 1)]}
+          end={pagedEnd ? endOfChapter : undefined}
           total={pages.length}
           rightToLeft={rightToLeft}
           onPrevious={goPrevious}
@@ -1050,10 +1307,12 @@ function ReaderRoute() {
 
     return (
       <ContinuousViewer
+        key={chapter}
         ref={viewerRef}
         pages={pages}
         scrollRef={scrollRef}
         onPositionChange={handleIndexChange}
+        onScrollSettle={spotSaver.settle}
         footer={endOfChapter}
       />
     )
@@ -1066,7 +1325,4 @@ function Centered({ children }: { children: ReactNode }) {
   )
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 

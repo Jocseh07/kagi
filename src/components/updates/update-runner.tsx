@@ -180,7 +180,7 @@ function SummaryPanel({
               <li key={group.key} className="text-xs leading-relaxed">
                 <span className="text-destructive">{group.sourceName}</span>
                 <span className="text-muted-foreground">
-                  {' — '}
+                  {': '}
                   {group.message}
                   {group.count > 1 && ` (${group.count} series)`}
                   {group.count === 1 && `: ${group.titles[0]}`}
@@ -225,13 +225,9 @@ function Panel({
         <CircleCheck className="mt-0.5 size-4 shrink-0 text-primary" />
       )}
       <div className="min-w-0 flex-1 space-y-1">{children}</div>
-      <button
-        type="button"
-        onClick={onDismiss}
-        className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
-      >
+      <Button variant="ghost" size="sm" className="shrink-0 text-muted-foreground" onClick={onDismiss}>
         Dismiss
-      </button>
+      </Button>
     </div>
   )
 }
@@ -283,7 +279,7 @@ function headline(summary: UpdateSummary): string {
   if (summary.failures.length > 0) parts.push(`${summary.failures.length} failed`)
 
   const line = parts.join(', ')
-  return summary.cancelled ? `Cancelled — ${line}` : line
+  return summary.cancelled ? `Cancelled. ${line}` : line
 }
 
 function chapterCount(count: number): string {

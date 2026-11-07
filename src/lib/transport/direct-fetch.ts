@@ -109,7 +109,7 @@ export class DirectFetchTransport implements HttpTransport {
       headers: res.headers,
       text: () => res.text(),
       json: <T,>() => res.json() as Promise<T>,
-      blob: () => res.blob(),
+      arrayBuffer: () => res.arrayBuffer(),
     }
   }
 }

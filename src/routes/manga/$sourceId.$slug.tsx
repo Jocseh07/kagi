@@ -11,14 +11,25 @@ import type { ReactNode } from 'react'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  ArrowLeftRight,
   ArrowUpToLine,
+  BookOpen,
   Check,
   CloudOff,
   Globe,
   Heart,
+  Library,
+  Lock,
   Play,
   Search,
+  SearchX,
+  Sparkles,
 } from 'lucide-react'
+
+import { CastTab } from '@/components/adapt/cast-tab'
+import { ChaptersTab } from '@/components/adapt/chapters-tab'
+import { PropsTab } from '@/components/adapt/props-tab'
+import { StyleTab } from '@/components/adapt/style-tab'
 
 import { ChapterFilters } from '@/components/chapter-filters'
 import { ChapterGroupSelect } from '@/components/chapter-group-select'
@@ -30,6 +41,7 @@ import {
   scanlatorKey,
 } from '@/lib/chapters/filter-state'
 import { scopeToGroups } from '@/lib/chapters/scope'
+import { chapterNumberLabel, chapterTitle } from '@/lib/chapters/title'
 import { useChapterFilters } from '@/lib/chapters/use-chapter-filters'
 import { ChapterDownloadButton } from '@/components/download/chapter-download-button'
 import { ExportCbzButton } from '@/components/download/export-cbz-button'
@@ -45,22 +57,28 @@ import type {
 } from '@/lib/chapters/filter-state'
 import { FoldRow } from '@/components/fold-row'
 import { ExpandableDescription } from '@/components/manga/expandable-description'
-import {
-  MangaActionButton,
-  MangaActionRow,
-  MangaActionSlot,
-} from '@/components/manga/manga-action-row'
+import { MangaActionButton } from '@/components/manga/manga-action-row'
+import { ButtonGroup } from '@/components/ui/button-group'
+import { AdaptAction } from '@/components/adapt/adapt-action'
+import { mangaSlug } from '@/components/manga-grid'
 import { MangaInfoHeader } from '@/components/manga/manga-info-header'
+import { LockedChaptersNotice } from '@/components/manga/locked-chapters-notice'
 import { useLibraryEntry } from '@/components/manga/use-library-entry'
 import type { LibraryEntryState } from '@/components/manga/use-library-entry'
 import { usePageBack } from '@/components/page-back'
 import type { PageBack } from '@/components/page-back'
 import { PageContainer } from '@/components/page-container'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorPanel } from '@/components/ui/error-panel'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { VirtualList } from '@/components/virtual-list'
+import { flaggedPanels } from '@/lib/adapt/flow'
+import { isBusy, useAdaptActivity } from '@/lib/adapt/pipeline'
+import { useAdaptation } from '@/lib/adapt/use-adaptation'
 import { useDatabaseReady } from '@/lib/db/provider'
 import { dbKeys } from '@/lib/db/query-keys'
 import { useCompactList } from '@/lib/display/compact'
@@ -89,7 +107,8 @@ import { usePageVirtualizer } from '@/lib/virtual/use-page-virtualizer'
 import { notify } from '@/lib/ui/toast'
 import { useDebounced } from '@/lib/use-debounced'
 import { cn } from '@/lib/utils'
-import { isTextSource } from '@/lib/sources/types'
+import { ADAPTED_SOURCE_ID } from '@/lib/sources/adapted'
+import { isTextSource, kindOf } from '@/lib/sources/types'
 import type {
   MangaUpdate,
   SChapter,
@@ -97,7 +116,35 @@ import type {
   Source,
 } from '@/lib/sources/types'
 
+const ADAPTATION_TABS = ['read', 'progress', 'cast', 'props', 'style'] as const
+
+type AdaptationTab = (typeof ADAPTATION_TABS)[number]
+
+function isAdaptationTab(value: unknown): value is AdaptationTab {
+  return ADAPTATION_TABS.some((tab) => tab === value)
+}
+
+/** Only an adaptation's page reads these; every other series ignores them. */
+interface MangaSearch {
+  tab?: AdaptationTab
+  /** Chapter open in Progress. */
+  chapter?: number
+  /** Character id open in Cast. */
+  who?: string
+  /** `place:<id>` or `prop:<id>` open in Props. */
+  item?: string
+}
+
 export const Route = createFileRoute('/manga/$sourceId/$slug')({
+  validateSearch: (search: Record<string, unknown>): MangaSearch => {
+    const next: MangaSearch = {}
+    if (isAdaptationTab(search.tab)) next.tab = search.tab
+    const chapter = Number(search.chapter)
+    if (Number.isInteger(chapter) && chapter > 0) next.chapter = chapter
+    if (typeof search.who === 'string' && search.who) next.who = search.who
+    if (typeof search.item === 'string' && search.item) next.item = search.item
+    return next
+  },
   component: MangaDetail,
   pendingComponent: MangaDetailPending,
 })
@@ -166,8 +213,18 @@ function MangaDetailView({ source, slug }: { source: Source; slug: string }) {
     staleTime: 0,
   })
 
+  // Sources fall back to the slug when a site's title markup changes; a stored title beats it.
+  const fetched = useMemo<MangaUpdate | undefined>(() => {
+    const data = detail.data
+    const storedTitle = stored.data?.manga.title
+    if (!data || data.manga.title !== slug || !storedTitle || storedTitle === slug) {
+      return data
+    }
+    return { ...data, manga: { ...data.manga, title: storedTitle } }
+  }, [detail.data, stored.data, slug])
+
   // The fetched copy the moment there is one, the stored copy until then.
-  const update = detail.data ?? stored.data ?? null
+  const update = fetched ?? stored.data ?? null
 
   /**
    * Keeps the stored copy current from the fetch that just landed.
@@ -178,7 +235,6 @@ function MangaDetailView({ source, slug }: { source: Source; slug: string }) {
    * marks the row for sync — see `cacheMangaDetails`.
    */
   useEffect(() => {
-    const fetched = detail.data
     if (!databaseReady || !fetched) return
 
     let abandoned = false
@@ -198,7 +254,7 @@ function MangaDetailView({ source, slug }: { source: Source; slug: string }) {
     return () => {
       abandoned = true
     }
-  }, [databaseReady, detail.data, source.id])
+  }, [databaseReady, fetched, source.id])
 
   // One target, two homes: below `md` the app header carries it centred, and
   // from `md` up it rides on the cover inside the info header.
@@ -538,6 +594,12 @@ function Loaded({
 
   const markingPrevious = markPrevious.isPending
 
+  // The followed group stays: it is which release you read, not a filter on it.
+  function clearChapterFilters() {
+    setSearch('')
+    setFilters({ ...filters, downloaded: 0, unread: 0, bookmarked: 0 })
+  }
+
   /**
    * Stable so that scrolling — which re-renders the list on every frame —
    * hands each memoized row the props it already had.
@@ -576,76 +638,18 @@ function Loaded({
     ],
   )
 
-  return (
-    /* The rail is the whole point of the wide layout: a series can list a
-       thousand chapters, and the cover and its actions should not scroll away
-       while you are working through them. Below `md` it is simply the top of
-       one column, in Mihon's order. */
-    <div className="md:grid md:grid-cols-[18rem_1fr] md:items-start md:gap-8">
-      <div className="flex flex-col gap-4 md:sticky md:top-4">
-        <MangaInfoHeader
-          manga={manga}
-          sourceName={source.name}
-          back={back}
-          inLibrary={library.favorite}
-        />
-
-        {/* The one action the page exists for, so it gets its own line and the
-            full width rather than a quarter of the strip. Absent only when the
-            series has no chapters at all and there is nothing to point at. */}
-        {resume && (
-          <Button asChild className="w-full">
-            <Link
-              to="/reader/$sourceId/$slug/$chapter"
-              params={{
-                sourceId: source.id,
-                slug,
-                chapter: chapterKey(resume.chapter),
-              }}
-              title={resume.chapter.name}
-            >
-              <Play className="size-5 sm:size-4" />
-              {resume.label}
-            </Link>
-          </Button>
-        )}
-
-        <MangaActionRow>
-          <FavoriteButton library={library} />
-
-          {!source.isLocal && (
-            <QueueUnreadButton
-              sourceId={source.id}
-              manga={manga}
-              chapters={scopedAscending}
-              rows={rows}
-              queuedUrls={queuedUrls}
-              onQueued={library.promptIfMissing}
-            />
-          )}
-
-          {/* Offline sources have no web URL; an empty href would resolve to
-              the current page and open a second copy of the app. */}
-          {webUrl && (
-            <MangaActionSlot>
-              <MangaActionButton asChild icon={Globe} label="Web">
-                <a href={webUrl} target="_blank" rel="noreferrer noopener">
-                  <Globe className="size-5 sm:size-4" />
-                  Web
-                </a>
-              </MangaActionButton>
-            </MangaActionSlot>
-          )}
-        </MangaActionRow>
-      </div>
-
-      <div className="flex min-w-0 flex-col gap-4 max-md:mt-4">
+  const chapterView = (
+      <>
         <ExpandableDescription
           description={manga.description}
           genres={manga.genre}
           onBrowseTag={browseTag}
           onCopyTag={copyTag}
         />
+
+        {/* `chapters`, not `sorted`: the notice counts the free run from the
+            start of the novel, which a reversed or filtered list would break. */}
+        <LockedChaptersNotice chapters={chapters} sourceName={source.name} />
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="shrink-0 text-sm font-semibold">
@@ -674,15 +678,32 @@ function Loaded({
         </div>
 
         {chapters.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            No chapters available.
-          </p>
+          source.id === ADAPTED_SOURCE_ID ? (
+            <EmptyState
+              icon={BookOpen}
+              title="Nothing drawn yet"
+              description="Chapters show here once their pages are lettered."
+            />
+          ) : (
+            <EmptyState
+              icon={BookOpen}
+              title="No chapters yet"
+              description="This source lists no chapters for this series."
+            />
+          )
         ) : sorted.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            {searching
-              ? 'No chapters match your search.'
-              : 'No chapters match the current filter.'}
-          </p>
+          <EmptyState
+            icon={SearchX}
+            title="No matching chapters"
+            description={
+              searching ? 'No chapter fits this search.' : 'No chapter fits these filters.'
+            }
+            action={
+              <Button variant="outline" size="sm" onClick={clearChapterFilters}>
+                Clear filters
+              </Button>
+            }
+          />
         ) : (
           <ChapterList
             blocks={groupedSegments}
@@ -691,9 +712,243 @@ function Loaded({
             renderRow={renderRow}
           />
         )}
+      </>
+  )
 
+  return (
+    /* The rail is the whole point of the wide layout: a series can list a
+       thousand chapters, and the cover and its actions should not scroll away
+       while you are working through them. Below `md` it is simply the top of
+       one column, in Mihon's order. */
+    <div className="md:grid md:grid-cols-[18rem_1fr] md:items-start md:gap-8">
+      <div className="flex flex-col gap-4 md:tall:sticky md:tall:top-4">
+        <MangaInfoHeader
+          manga={manga}
+          sourceName={source.name}
+          back={back}
+          inLibrary={library.favorite}
+        />
+
+        {/* The one action the page exists for, so it gets its own line and the
+            full width rather than a quarter of the strip. Absent only when the
+            series has no chapters at all and there is nothing to point at. */}
+        {resume && (
+          <Button asChild className="w-full">
+            <Link
+              to="/reader/$sourceId/$slug/$chapter"
+              params={{
+                sourceId: source.id,
+                slug,
+                chapter: chapterKey(resume.chapter),
+              }}
+              title={resume.chapter.name}
+            >
+              <Play className="size-5 sm:size-4" />
+              {resume.label}
+            </Link>
+          </Button>
+        )}
+
+        <ButtonGroup aria-label="Series actions" className="w-full">
+          <FavoriteButton library={library} />
+
+          {kindOf(source) === 'novel' && (
+            <AdaptAction sourceId={source.id} novel={manga} chapterCount={chapters.length} />
+          )}
+
+          {source.id === ADAPTED_SOURCE_ID && <AdaptationNovelAction adaptationId={slug} />}
+
+          {!source.isLocal && (
+            <QueueUnreadButton
+              sourceId={source.id}
+              manga={manga}
+              chapters={scopedAscending}
+              rows={rows}
+              queuedUrls={queuedUrls}
+              onQueued={library.promptIfMissing}
+            />
+          )}
+
+          {/* Only for a series being kept, and only where there is somewhere
+              to go: migrating is about moving a library entry, and a local
+              source reads the device rather than a catalogue that could
+              stall. */}
+          {library.favorite && !source.isLocal && (
+            <MangaActionButton asChild icon={ArrowLeftRight} label="Migrate">
+              <Link
+                to="/migrate/$sourceId/$slug"
+                params={{ sourceId: source.id, slug }}
+              >
+                <ArrowLeftRight className="size-5 sm:size-4" />
+                Migrate
+              </Link>
+            </MangaActionButton>
+          )}
+
+          {/* Offline sources have no web URL; an empty href would resolve to
+              the current page and open a second copy of the app. */}
+          {webUrl && (
+            <MangaActionButton asChild icon={Globe} label="Web">
+              <a href={webUrl} target="_blank" rel="noreferrer noopener">
+                <Globe className="size-5 sm:size-4" />
+                Web
+              </a>
+            </MangaActionButton>
+          )}
+        </ButtonGroup>
+      </div>
+
+      <div className="flex min-w-0 flex-col gap-4 max-md:mt-4">
+        {source.id === ADAPTED_SOURCE_ID ? (
+          <AdaptationTabs adaptationId={slug} hasChapters={chapters.length > 0}>
+            {chapterView}
+          </AdaptationTabs>
+        ) : (
+          chapterView
+        )}
       </div>
     </div>
+  )
+}
+
+/** Back to the novel an adaptation is drawn from. */
+function AdaptationNovelAction({ adaptationId }: { adaptationId: string }) {
+  const query = useAdaptation(adaptationId)
+  const adaptation = query.data?.adaptation
+  if (!adaptation) return null
+  const novelSlug = mangaSlug({
+    url: adaptation.novelUrl,
+    title: adaptation.title,
+    status: 'unknown',
+    initialized: true,
+    memo: adaptation.novelMemo,
+  })
+  return (
+    <MangaActionButton asChild icon={Library} label="Novel">
+      <Link to="/manga/$sourceId/$slug" params={{ sourceId: adaptation.sourceId, slug: novelSlug }}>
+        <Library className="size-5 sm:size-4" />
+        Novel
+      </Link>
+    </MangaActionButton>
+  )
+}
+
+/**
+ * An adaptation's workshop, under the same rail as any other series: Read is
+ * the chapter list, the rest is how the chapters get made.
+ */
+function AdaptationTabs({
+  adaptationId,
+  hasChapters,
+  children,
+}: {
+  adaptationId: string
+  hasChapters: boolean
+  children: ReactNode
+}) {
+  const search = Route.useSearch()
+  const navigate = useNavigate({ from: Route.fullPath })
+  const query = useAdaptation(adaptationId)
+  const activity = useAdaptActivity(adaptationId)
+  // A new adaptation has nothing to read yet, so it opens on its progress.
+  const tab = search.tab ?? (hasChapters ? 'read' : 'progress')
+  const open = (patch: MangaSearch) =>
+    void navigate({ search: (previous) => ({ ...previous, ...patch }) })
+
+  const data = query.data
+  const stopped = data?.adaptation.status === 'stopped'
+  const busy = isBusy(activity)
+  const flagged = data ? flaggedPanels(data.chapters).length : 0
+
+  function panel(render: (loaded: NonNullable<typeof data>) => ReactNode) {
+    if (data) return render(data)
+    if (query.isError) {
+      return <ErrorPanel error={query.error} onRetry={() => void query.refetch()} />
+    }
+    if (query.isPending) return <Skeleton className="h-40 w-full" />
+    return (
+      <EmptyState
+        icon={Sparkles}
+        title="Adaptation not found"
+        description="It was deleted, or made in another browser."
+      />
+    )
+  }
+
+  return (
+    <Tabs
+      value={tab}
+      onValueChange={(next) => isAdaptationTab(next) && open({ tab: next })}
+      className="gap-4"
+    >
+      <div className="overflow-x-auto overflow-y-hidden">
+        <TabsList aria-label="Adaptation sections">
+          <TabsTrigger value="read">Read</TabsTrigger>
+          <TabsTrigger value="progress">
+            {stopped ? (
+              <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-destructive" />
+            ) : busy ? (
+              <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-foreground motion-safe:animate-pulse" />
+            ) : null}
+            Progress
+            {flagged ? <Badge variant="destructive">{flagged}</Badge> : null}
+            <span className="sr-only">
+              {stopped ? ', stopped' : busy ? ', in progress' : ''}
+              {flagged ? `, ${flagged} panels to check` : ''}
+            </span>
+          </TabsTrigger>
+          <TabsTrigger value="cast">Cast</TabsTrigger>
+          <TabsTrigger value="props">Props</TabsTrigger>
+          <TabsTrigger value="style">Style</TabsTrigger>
+        </TabsList>
+      </div>
+      <TabsContent value="read" className="flex flex-col gap-4">
+        {children}
+      </TabsContent>
+      <TabsContent value="progress">
+        {panel(({ adaptation, characters, chapters }) => (
+          <ChaptersTab
+            adaptation={adaptation}
+            characters={characters}
+            chapters={chapters}
+            selected={search.chapter}
+          />
+        ))}
+      </TabsContent>
+      <TabsContent value="cast">
+        {panel(({ characters, chapters }) => (
+          <CastTab
+            characters={characters}
+            chapters={chapters}
+            selected={search.who}
+            onSelect={(who) => open({ who })}
+            onOpenChapter={(chapter) => open({ tab: 'progress', chapter })}
+          />
+        ))}
+      </TabsContent>
+      <TabsContent value="props">
+        {panel(({ adaptation, chapters }) => (
+          <PropsTab
+            adaptationId={adaptation.id}
+            places={adaptation.places ?? []}
+            props={adaptation.props ?? []}
+            chapters={chapters}
+            selected={search.item}
+            onSelect={(item) => open({ item })}
+            onOpenChapter={(chapter) => open({ tab: 'progress', chapter })}
+          />
+        ))}
+      </TabsContent>
+      <TabsContent value="style">
+        {panel(({ adaptation, chapters }) => (
+          <StyleTab
+            key={`${adaptation.style}:${adaptation.styleNotes}`}
+            adaptation={adaptation}
+            chapters={chapters}
+          />
+        ))}
+      </TabsContent>
+    </Tabs>
   )
 }
 
@@ -710,17 +965,15 @@ function FavoriteButton({ library }: { library: LibraryEntryState }) {
   const { ready, favorite, busy, setFavorite: write } = library
 
   return (
-    <MangaActionSlot>
-      <MangaActionButton
-        icon={Heart}
-        iconClassName={favorite ? 'fill-current' : undefined}
-        label={favorite ? 'In library' : 'Add'}
-        active={favorite}
-        disabled={!ready || busy}
-        aria-pressed={favorite}
-        onClick={() => write(!favorite)}
-      />
-    </MangaActionSlot>
+    <MangaActionButton
+      icon={Heart}
+      iconClassName={favorite ? 'fill-current' : undefined}
+      label={favorite ? 'In library' : 'Add'}
+      active={favorite}
+      disabled={!ready || busy}
+      aria-pressed={favorite}
+      onClick={() => write(!favorite)}
+    />
   )
 }
 
@@ -1147,23 +1400,43 @@ const ChapterRow = memo(function ChapterRow({
         <Link
           to="/reader/$sourceId/$slug/$chapter"
           params={{ sourceId: source.id, slug, chapter: chapterKey(chapter) }}
-          className="min-w-0 flex-1"
+          className={cn('flex min-w-0 flex-1 items-center', compact ? 'gap-2' : 'gap-3')}
           preload={false}
           onMouseEnter={schedulePrefetch}
           onMouseLeave={cancelPrefetch}
           onFocus={schedulePrefetch}
           onBlur={cancelPrefetch}
         >
-          {/* Read chapters stay legible but stop competing for attention. */}
-          <p
+          <span
             className={cn(
-              'truncate',
-              compact ? 'text-sm' : 'text-base sm:text-sm',
-              read ? 'text-muted-foreground' : 'font-medium',
+              'w-10 shrink-0 text-right text-sm tabular-nums',
+              read ? 'text-muted-foreground/70' : 'font-medium text-muted-foreground',
             )}
           >
-            {chapter.name}
-          </p>
+            {chapterNumberLabel(chapter)}
+          </span>
+          <div className="min-w-0 flex-1">
+          {/* Read chapters stay legible but stop competing for attention. */}
+          <div className="flex min-w-0 items-center gap-1.5">
+            <p
+              className={cn(
+                'truncate',
+                compact ? 'text-sm' : 'text-base sm:text-sm',
+                read ? 'text-muted-foreground' : 'font-medium',
+              )}
+              title={chapter.name}
+            >
+              {chapterTitle(chapter)}
+            </p>
+            {/* Marks the row as paid; the notice above the list says how many
+                are free, so this carries no words of its own. */}
+            {chapter.locked && (
+              <Lock
+                aria-label="Paid chapter"
+                className="size-3.5 shrink-0 text-muted-foreground"
+              />
+            )}
+          </div>
           {meta.length > 0 && (
             <p
               className={cn(
@@ -1174,6 +1447,7 @@ const ChapterRow = memo(function ChapterRow({
               {meta.join(' · ')}
             </p>
           )}
+          </div>
         </Link>
 
         <div
@@ -1215,8 +1489,10 @@ const ChapterRow = memo(function ChapterRow({
           )}
 
           {/* Local content is already on disk, and its `blob:` page URLs cannot
-              be stored by the Cache API, so saving it offline is meaningless. */}
-          {!source.isLocal && (
+              be stored by the Cache API, so saving it offline is meaningless.
+              A paid chapter has nothing to save either: the fetch it would
+              queue can only come back locked. */}
+          {!source.isLocal && !chapter.locked && (
             <ChapterDownloadButton
               sourceId={source.id}
               manga={manga}
@@ -1546,17 +1822,12 @@ function chapterRangeLabel(run: SChapter[]): string {
   const first = run[0]
   const last = run[run.length - 1]
   if (!first || !last) return ''
-  const start = chapterLabel(first)
-  const end = chapterLabel(last)
-  return start === end ? start : `${start} – ${end}`
-}
-
-/** Sources report an unknown chapter number as a negative, so fall back to the name. */
-function chapterLabel(chapter: SChapter): string {
-  if (!Number.isFinite(chapter.chapterNumber) || chapter.chapterNumber < 0) {
-    return chapter.name
+  const start = chapterNumberLabel(first)
+  const end = chapterNumberLabel(last)
+  if (start === null || end === null) {
+    return first === last ? first.name : `${first.name}-${last.name}`
   }
-  return `Ch. ${Number(chapter.chapterNumber.toFixed(2))}`
+  return start === end ? `Ch. ${start}` : `Ch. ${start}-${end}`
 }
 
 interface ResumeTarget {
@@ -1617,11 +1888,7 @@ function DetailSkeleton() {
             <Skeleton className="h-4 w-3/5" />
           </div>
         </div>
-        <div className="flex gap-1">
-          {Array.from({ length: 4 }, (_, index) => (
-            <Skeleton key={index} className="h-12 flex-1 rounded-lg" />
-          ))}
-        </div>
+        <Skeleton className="h-14 w-full rounded-lg" />
       </div>
 
       <div className="flex min-w-0 flex-col gap-4 max-md:mt-4">
@@ -1631,12 +1898,55 @@ function DetailSkeleton() {
           <Skeleton className="h-6 w-20 rounded-4xl" />
           <Skeleton className="h-6 w-14 rounded-4xl" />
         </div>
-        <div className="flex flex-col gap-2">
-          {Array.from({ length: 8 }, (_, index) => (
-            <Skeleton key={index} className="h-12 w-full rounded-lg" />
+        <ChapterListSkeleton />
+      </div>
+    </div>
+  )
+}
+
+/** How many lines of chapters the placeholder draws. */
+const CHAPTER_SKELETON_ROWS = 8
+
+/**
+ * The chapter list before it has any chapters.
+ *
+ * Shaped like `ChapterList` rather than like a stack of bars: one frame, rows
+ * divided by hairlines, at the height and column count the setting will give
+ * them. The heights are the class side of `CHAPTER_ROW_HEIGHT` and
+ * `COMPACT_CHAPTER_ROW_HEIGHT` and move with them.
+ */
+function ChapterListSkeleton() {
+  const compact = useCompactList()
+  const listColumns = useListColumns()
+  const columns = compact ? listColumns : 1
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-card">
+      {Array.from({ length: CHAPTER_SKELETON_ROWS }, (_, row) => (
+        <div
+          key={row}
+          className={cn(
+            'grid',
+            row < CHAPTER_SKELETON_ROWS - 1 && 'border-b border-border',
+          )}
+          style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+        >
+          {Array.from({ length: columns }, (_, column) => (
+            <div
+              key={column}
+              className={cn(
+                'flex items-center gap-3',
+                compact ? 'h-12 px-2.5' : 'h-15 px-3.5',
+                // The same hairline the real rows keep between columns.
+                column < columns - 1 && 'border-r border-border',
+              )}
+            >
+              <Skeleton className="h-3.5 w-10 shrink-0" />
+              <Skeleton className="h-3.5 w-2/5" />
+            </div>
           ))}
         </div>
-      </div>
+      ))}
     </div>
   )
 }

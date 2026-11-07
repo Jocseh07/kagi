@@ -1,3 +1,4 @@
+import { parseDocument } from '../../text/document'
 import { DirectFetchTransport, RateLimiter } from '../../transport/direct-fetch'
 import { HttpStatusError, type HttpTransport } from '../../transport/types'
 import type {
@@ -10,6 +11,7 @@ import type {
   SManga,
   Source,
 } from '../types'
+import { appOrigin } from '../app-origin'
 
 /** Where the site lives, and what "open in browser" must point at. */
 const SITE_URL = 'https://www.webtoons.com'
@@ -33,12 +35,12 @@ const ICON_URL =
  */
 function resolveApiBase(): string {
   if (typeof location === 'undefined') return SITE_URL
-  return new URL('/webtoons', location.origin).toString()
+  return new URL('/webtoons', appOrigin()).toString()
 }
 
 function resolveImageBase(): string | null {
   if (typeof location === 'undefined') return null
-  return new URL('/webtoonscdn', location.origin).toString()
+  return new URL('/webtoonscdn', appOrigin()).toString()
 }
 
 /** The site publishes no limit. One a second: these are full page loads. */
@@ -483,7 +485,7 @@ export class Webtoons implements Source {
     signal?: AbortSignal,
   ): Promise<Document> {
     const res = await this.http.fetch({ url, signal })
-    return new DOMParser().parseFromString(await res.text(), 'text/html')
+    return parseDocument(await res.text(), 'text/html')
   }
 }
 

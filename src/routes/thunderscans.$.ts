@@ -1,5 +1,7 @@
+import { sourceProxyPolicies } from '@/lib/transport/source-policy'
 import { createFileRoute } from '@tanstack/react-router'
 
+import { runServer } from '@/server/effect/run'
 import { proxyTo } from '@/server/proxy'
 
 // Thunder Scans withholds CORS on its HTML and its page images, which share
@@ -9,12 +11,10 @@ import { proxyTo } from '@/server/proxy'
 // own origin. `redirects: 'manual'` hands them to the browser with the
 // Location rewritten back under `/thunderscans`, which is why the source needs
 // no slug cache.
-const handler = ({ request }: { request: Request }) =>
-  proxyTo(request, {
-    prefix: '/thunderscans',
-    target: 'https://en-thunderscans.com',
-    redirects: 'manual',
-  })
+const handler = async ({ request }: { request: Request }) =>
+  await runServer(
+    proxyTo(request, sourceProxyPolicies['/thunderscans']),
+  )
 
 export const Route = createFileRoute('/thunderscans/$')({
   server: {

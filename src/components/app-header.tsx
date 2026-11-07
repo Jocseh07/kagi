@@ -4,8 +4,9 @@ import { EyeOff } from 'lucide-react'
 
 import { ACCOUNT_LINKS, NAV, useAccount } from '@/components/app-nav-items'
 import { ModeToggle } from '@/components/mode-toggle'
+import { KagiMark } from '@/components/kagi-mark'
 import { usePageBackValue } from '@/components/page-back'
-import { accentClass } from '@/components/profile/avatar-accent'
+import { accentClass } from '@/lib/profile/avatar-accent'
 import { ProfileDialog } from '@/components/profile/profile-dialog'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -25,9 +26,10 @@ export function AppHeader() {
           line up with them. */}
       <div className="page-width relative flex h-14 items-center gap-1 px-page">
         <Link
-          to="/library"
-          className="font-brand mr-3 shrink-0 text-sm font-semibold tracking-tight"
+          to="/"
+          className="font-brand mr-3 flex shrink-0 items-center gap-2 text-sm font-semibold tracking-tight"
         >
+          <KagiMark className="size-5" />
           Kagi
         </Link>
 
@@ -50,6 +52,7 @@ export function AppHeader() {
             <Link
               key={item.to}
               to={item.to}
+              activeOptions={{ exact: item.to === '/' }}
               // `data-status` rather than `activeProps`, so the active colour
               // wins by variant order instead of by class-string order.
               className="rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground data-[status=active]:bg-secondary data-[status=active]:text-foreground"

@@ -39,7 +39,3 @@ export function dayLabel(midnight: number): string {
 export function chapterKeyOf(url: string, chapterNumber: number): string {
   return url.split('/').pop() ?? String(chapterNumber)
 }
-
-export function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : 'unknown error'
-}
