@@ -21,7 +21,9 @@ import type {
   LocalizedString,
   MangaDto,
   Relationship,
+  TagDto,
 } from './dto'
+import { appOrigin } from '../app-origin'
 
 /** Where the site lives, and what "open in browser" must point at. */
 const SITE_URL = 'https://mangadex.org'
@@ -49,17 +51,17 @@ const ICON_URL =
  */
 function resolveApiBase(): string {
   if (typeof location === 'undefined') return API_URL
-  return new URL('/mangadex', location.origin).toString()
+  return new URL('/mangadex', appOrigin()).toString()
 }
 
 function resolveCoverBase(): string {
   if (typeof location === 'undefined') return UPLOADS_URL
-  return new URL('/mdcovers', location.origin).toString()
+  return new URL('/mdcovers', appOrigin()).toString()
 }
 
 function resolveImageBase(): string | null {
   if (typeof location === 'undefined') return null
-  return new URL('/mdimage', location.origin).toString()
+  return new URL('/mdimage', appOrigin()).toString()
 }
 
 /** The API's own ceiling for a manga list. */
@@ -112,6 +114,16 @@ const DEMOGRAPHIC_VALUES = [
 ] as const
 
 /**
+ * Which tag groups become a filter, and the bucket each lands in. The API's
+ * fourth group, `content`, is left out: it restates the rating preference.
+ */
+const TAG_GROUPS: Record<string, keyof MangadexFilterData> = {
+  genre: 'genres',
+  theme: 'themes',
+  format: 'formats',
+}
+
+/**
  * Which ratings the API is asked for, as one choice rather than four switches.
  *
  * The API takes a repeated parameter and returns nothing at all when none is
@@ -140,6 +152,13 @@ const CONTENT_RATINGS = [
 const PREF_CONTENT_RATING = 'contentRating'
 const PREF_DATA_SAVER = 'dataSaver'
 
+/** `/manga/tag`, split into the three buckets the sheet offers. */
+export interface MangadexFilterData {
+  genres: Array<{ label: string; value: string }>
+  themes: Array<{ label: string; value: string }>
+  formats: Array<{ label: string; value: string }>
+}
+
 /**
  * MangaDex.
  *
@@ -162,7 +181,7 @@ export class MangaDex implements Source, ConfigurableSource {
   readonly versionCode = 1
   readonly supportsLatest = true
   readonly isLocal = false
-  readonly supportsFilterFetching = false
+  readonly supportsFilterFetching = true
   readonly supportsRelatedMangas = false
   readonly pageFetchIntervalMs = PAGE_FETCH_INTERVAL_MS
 
@@ -177,6 +196,12 @@ export class MangaDex implements Source, ConfigurableSource {
    */
   private ratingFilter: string = 'suggestive'
   private dataSaver = false
+
+  /**
+   * Tag label to tag id, filled whenever the vocabulary is seen, because the
+   * app does not thread `fetchFilterData` output back into search.
+   */
+  private tagIds = new Map<string, string>()
 
   constructor(
     transport?: HttpTransport,
@@ -307,7 +332,7 @@ export class MangaDex implements Source, ConfigurableSource {
 
     const term = query.trim()
     if (term) url.searchParams.set('title', term)
-    applyFilters(url, filters, Boolean(term))
+    applyFilters(url, filters, Boolean(term), this.tagIds)
     this.applyContentRating(url)
 
     const body = await this.get<Collection<MangaDto>>(url, signal)
@@ -417,12 +442,62 @@ export class MangaDex implements Source, ConfigurableSource {
 
   // -------------------------------------------------------------- filters --
 
-  getFilterList(): FilterList {
+  /**
+   * The whole tag vocabulary, bucketed the way the sheet offers it.
+   *
+   * The `content` group is dropped: those tags restate the content rating
+   * preference. A failed fetch leaves the buckets empty, so the sheet still
+   * sorts and filters by status.
+   */
+  async fetchFilterData(signal?: AbortSignal): Promise<MangadexFilterData> {
+    const buckets: MangadexFilterData = { genres: [], themes: [], formats: [] }
+    try {
+      const body = await this.get<Collection<TagDto>>(
+        new URL(`${this.apiBase}/manga/tag`),
+        signal,
+      )
+      for (const tag of body.data) {
+        const label = tag.attributes?.name?.en
+        const bucket = TAG_GROUPS[tag.attributes?.group ?? '']
+        if (!label || !tag.id || !bucket) continue
+        buckets[bucket].push({ label, value: tag.id })
+      }
+    } catch {
+      signal?.throwIfAborted()
+      return { genres: [], themes: [], formats: [] }
+    }
+
+    for (const bucket of [buckets.genres, buckets.themes, buckets.formats]) {
+      bucket.sort((a, b) => a.label.localeCompare(b.label))
+      this.rememberTags(bucket)
+    }
+    return buckets
+  }
+
+  getFilterList(data?: unknown): FilterList {
+    const filterData = data as MangadexFilterData | undefined
+    const genres = filterData?.genres ?? []
+    const themes = filterData?.themes ?? []
+    const formats = filterData?.formats ?? []
+
+    // Search reads the instance map rather than this argument, which the app
+    // does not thread back into `getSearchMangaList`.
+    this.rememberTags(genres)
+    this.rememberTags(themes)
+    this.rememberTags(formats)
+
     return [
       sortFilter(),
       selectFilter('Status', STATUS_VALUES),
       selectFilter('Demographic', DEMOGRAPHIC_VALUES),
+      groupFilter('Genres', genres),
+      groupFilter('Themes', themes),
+      groupFilter('Formats', formats),
     ]
+  }
+
+  private rememberTags(tags: MangadexFilterData['genres']): void {
+    for (const tag of tags) this.tagIds.set(tag.label, tag.value)
   }
 
   // ----------------------------------------------------------------- urls --
@@ -663,7 +738,27 @@ function selectFilter(
   return { type: 'select', name, values: values.map(([l]) => l), state: 0 }
 }
 
-function applyFilters(url: URL, filters: FilterList, hasQuery: boolean): void {
+function groupFilter(
+  name: string,
+  entries: MangadexFilterData['genres'],
+): Filter {
+  return {
+    type: 'group',
+    name,
+    state: entries.map((entry) => ({
+      type: 'checkbox' as const,
+      name: entry.label,
+      state: false,
+    })),
+  }
+}
+
+function applyFilters(
+  url: URL,
+  filters: FilterList,
+  hasQuery: boolean,
+  tagIds: Map<string, string>,
+): void {
   let ordered = false
 
   for (const filter of filters) {
@@ -691,6 +786,19 @@ function applyFilters(url: URL, filters: FilterList, hasQuery: boolean): void {
           filter.name === 'Status' ? 'status[]' : 'publicationDemographic[]',
           value,
         )
+        break
+      }
+      case 'group': {
+        let tagged = false
+        for (const child of filter.state) {
+          if (child.type !== 'checkbox' || !child.state) continue
+          const id = tagIds.get(child.name)
+          if (!id) continue
+          url.searchParams.append('includedTags[]', id)
+          tagged = true
+        }
+        // Several checked tags read as "all of these", not "any of these".
+        if (tagged) url.searchParams.set('includedTagsMode', 'AND')
         break
       }
     }

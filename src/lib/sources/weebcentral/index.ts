@@ -1,3 +1,4 @@
+import { parseDocument } from '../../text/document'
 import { DirectFetchTransport, RateLimiter } from '../../transport/direct-fetch'
 import type { HttpTransport } from '../../transport/types'
 import type {
@@ -11,6 +12,7 @@ import type {
   SManga,
   Source,
 } from '../types'
+import { appOrigin } from '../app-origin'
 
 /** Where the site lives, and what "open in browser" must point at. */
 const SITE_URL = 'https://weebcentral.com'
@@ -34,12 +36,12 @@ const ICON_URL =
  */
 function resolveApiBase(): string {
   if (typeof location === 'undefined') return SITE_URL
-  return new URL('/weebcentral', location.origin).toString()
+  return new URL('/weebcentral', appOrigin()).toString()
 }
 
 function resolveImageBase(): string {
   if (typeof location === 'undefined') return IMAGE_URL
-  return new URL('/weebcdn', location.origin).toString()
+  return new URL('/weebcdn', appOrigin()).toString()
 }
 
 /**
@@ -84,6 +86,47 @@ const TRIPLE_VALUES = [
 const STATUS_VALUES = ['Ongoing', 'Complete', 'Hiatus', 'Canceled'] as const
 const TYPE_VALUES = ['Manga', 'Manhwa', 'Manhua', 'OEL'] as const
 
+const TAG_VALUES = [
+  'Action',
+  'Adult',
+  'Adventure',
+  'Comedy',
+  'Doujinshi',
+  'Drama',
+  'Ecchi',
+  'Fantasy',
+  'Gender Bender',
+  'Harem',
+  'Hentai',
+  'Historical',
+  'Horror',
+  'Isekai',
+  'Josei',
+  'Lolicon',
+  'Martial Arts',
+  'Mature',
+  'Mecha',
+  'Mystery',
+  'Psychological',
+  'Romance',
+  'School Life',
+  'Sci-fi',
+  'Seinen',
+  'Shotacon',
+  'Shoujo',
+  'Shoujo Ai',
+  'Shounen',
+  'Shounen Ai',
+  'Slice of Life',
+  'Smut',
+  'Sports',
+  'Supernatural',
+  'Tragedy',
+  'Yaoi',
+  'Yuri',
+  'Other',
+] as const
+
 /**
  * A name like `Season 2 Chapter 4` restarts its numbering, so the number in it
  * is not the chapter's position in the series. When one appears the whole list
@@ -96,8 +139,7 @@ const SEASON_NAME = /(Season|S)\s*\d+/i
  *
  * Plain server-rendered HTML throughout: the search form posts to a fragment
  * endpoint, the chapter list is its own fragment, and a chapter's images are a
- * third. There is no JSON API to prefer, so unlike Asura this scrapes, and
- * therefore only runs in a browser — `DOMParser` has no Node counterpart here.
+ * third. There is no JSON API to prefer, so unlike Asura this scrapes.
  */
 export class WeebCentral implements Source {
   readonly id = 'weebcentral'
@@ -273,8 +315,11 @@ export class WeebCentral implements Source {
     return chapters
   }
 
-  async getRelatedMangaList(manga: SManga): Promise<SManga[]> {
-    const doc = await this.fetchDocument(`${this.apiBase}${manga.url}`)
+  async getRelatedMangaList(
+    manga: SManga,
+    signal?: AbortSignal,
+  ): Promise<SManga[]> {
+    const doc = await this.fetchDocument(`${this.apiBase}${manga.url}`, signal)
     const related = [...doc.querySelectorAll('a')]
       .filter((anchor) => {
         const href = anchor.getAttribute('href')
@@ -350,6 +395,15 @@ export class WeebCentral implements Source {
           state: false,
         })),
       },
+      {
+        type: 'group',
+        name: 'Genres',
+        state: TAG_VALUES.map((name) => ({
+          type: 'checkbox' as const,
+          name,
+          state: false,
+        })),
+      },
     ]
   }
 
@@ -395,7 +449,7 @@ export class WeebCentral implements Source {
     signal?: AbortSignal,
   ): Promise<Document> {
     const res = await this.http.fetch({ url, signal })
-    return new DOMParser().parseFromString(await res.text(), 'text/html')
+    return parseDocument(await res.text(), 'text/html')
   }
 }
 
@@ -563,7 +617,9 @@ function applyFilters(url: URL, filters: FilterList): void {
             ? 'included_status'
             : filter.name === 'Type'
               ? 'included_type'
-              : null
+              : filter.name === 'Genres'
+                ? 'included_tag'
+                : null
         if (!param) break
         for (const child of filter.state) {
           if (child.type === 'checkbox' && child.state) {

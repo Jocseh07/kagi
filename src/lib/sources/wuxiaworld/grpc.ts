@@ -19,7 +19,7 @@
  *
  * `application/grpc-web+proto` rather than the base64 `-text` variant: the
  * binary form is what the site's own client sends, and the transport already
- * hands back bytes through `blob()`.
+ * hands back bytes through `arrayBuffer()`.
  */
 
 import { decodeMessage } from '../../backup/protobuf'
@@ -148,7 +148,7 @@ export async function unary(
   // frame, which is how a rejected call with no body arrives.
   assertOk(res.headers.get('grpc-status'), res.headers.get('grpc-message'))
 
-  const bytes = new Uint8Array(await (await res.blob()).arrayBuffer())
+  const bytes = new Uint8Array(await res.arrayBuffer())
   const payload = readFrames(bytes)
   if (!payload) throw new Error(`${method} returned no message.`)
   return decodeMessage(payload)

@@ -1,3 +1,4 @@
+import { parseDocument } from '../../text/document'
 import {
   DirectFetchTransport,
   RateLimiter,
@@ -24,6 +25,7 @@ import type {
   SeriesDto,
   SeriesListResponse,
 } from './dto'
+import { appOrigin } from '../app-origin'
 
 const BASE_URL = 'https://asurascans.com'
 const API_URL = 'https://api.asurascans.com/api'
@@ -48,12 +50,12 @@ const CDN_URL = 'https://cdn.asurascans.com'
  */
 function resolveApiBase(): string {
   if (typeof location === 'undefined') return API_URL
-  return new URL('/asurascans/api', location.origin).toString()
+  return new URL('/asurascans/api', appOrigin()).toString()
 }
 
 function resolveCdnBase(): string {
   if (typeof location === 'undefined') return CDN_URL
-  return new URL('/asuracdn', location.origin).toString()
+  return new URL('/asuracdn', appOrigin()).toString()
 }
 
 /** Also the API's ceiling: `limit` above 50 is ignored and 20 used instead. */
@@ -233,9 +235,13 @@ export class AsuraScans implements Source {
       .map((c) => toSChapter(c, slug))
   }
 
-  async getRelatedMangaList(manga: SManga): Promise<SManga[]> {
+  async getRelatedMangaList(
+    manga: SManga,
+    signal?: AbortSignal,
+  ): Promise<SManga[]> {
     const res = await this.http.fetch({
       url: `${this.apiBase}/series/${slugOf(manga)}`,
+      signal,
     })
     const body = await res.json<SeriesDetailResponse>()
     return (body.recommended_series ?? []).map((dto) =>
@@ -276,8 +282,8 @@ export class AsuraScans implements Source {
 
   // -------------------------------------------------------------- filters --
 
-  async fetchFilterData(): Promise<AsuraFilterData> {
-    const genres = await this.fetchGenres()
+  async fetchFilterData(signal?: AbortSignal): Promise<AsuraFilterData> {
+    const genres = await this.fetchGenres(signal)
     this.rememberGenres(genres)
     return { genres }
   }
@@ -289,15 +295,18 @@ export class AsuraScans implements Source {
    * list when this was written — but a filter sheet missing a few options beats
    * one that will not open because the endpoint blipped.
    */
-  private async fetchGenres(): Promise<AsuraFilterData['genres']> {
+  private async fetchGenres(
+    signal?: AbortSignal,
+  ): Promise<AsuraFilterData['genres']> {
     try {
-      const res = await this.http.fetch({ url: `${this.apiBase}/genres` })
+      const res = await this.http.fetch({ url: `${this.apiBase}/genres`, signal })
       const body = await res.json<GenresResponse>()
       const genres = (body.data ?? [])
         .filter((g) => g.name && g.slug)
         .map((g) => ({ label: g.name, value: g.slug }))
       if (genres.length) return genres
     } catch {
+      signal?.throwIfAborted()
       // Fall through to the snapshot.
     }
     return STATIC_GENRES.map(([label, value]) => ({ label, value }))
@@ -441,7 +450,7 @@ function toStatus(raw?: string): MangaStatus {
 /** Descriptions arrive as HTML fragments. */
 function stripHtml(html?: string): string | undefined {
   if (!html) return undefined
-  return new DOMParser().parseFromString(html, 'text/html').body.textContent
+  return parseDocument(html, 'text/html').body.textContent
     ?.trim()
 }
 

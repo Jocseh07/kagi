@@ -1,5 +1,7 @@
+import { sourceProxyPolicies } from '@/lib/transport/source-policy'
 import { createFileRoute } from '@tanstack/react-router'
 
+import { runServer } from '@/server/effect/run'
 import { proxyTo } from '@/server/proxy'
 
 // NovelFull is the fingerprinted one: Cloudflare profiles Node's TLS
@@ -9,13 +11,10 @@ import { proxyTo } from '@/server/proxy'
 // Cloudflare challenges it, proxyTo answers 503 with `x-proxy-challenge` and
 // the app degrades to its explicit challenge error.
 // `redirects: 'follow'` matches what the curl hop's `--location` did.
-const handler = ({ request }: { request: Request }) =>
-  proxyTo(request, {
-    prefix: '/novelfull',
-    target: 'https://novelfull.com',
-    redirects: 'follow',
-    browserHeaders: true,
-  })
+const handler = async ({ request }: { request: Request }) =>
+  await runServer(
+    proxyTo(request, sourceProxyPolicies['/novelfull']),
+  )
 
 export const Route = createFileRoute('/novelfull/$')({
   server: {

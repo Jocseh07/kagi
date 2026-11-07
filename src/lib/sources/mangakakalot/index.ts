@@ -21,6 +21,7 @@ import type {
   SearchResponse,
   SearchRowDto,
 } from './dto'
+import { appOrigin } from '../app-origin'
 
 /**
  * Where the site lives, and what "open in browser" must point at.
@@ -58,7 +59,7 @@ const ICON_URL =
  */
 function resolveApiBase(): string {
   if (typeof location === 'undefined') return API_URL
-  return new URL('/mangakakalot/graphql', location.origin).toString()
+  return new URL('/mangakakalot/graphql', appOrigin()).toString()
 }
 
 /** The site publishes no limit. Two a second, matching the other scrapers. */

@@ -13,6 +13,7 @@ import type {
   SManga,
   Source,
 } from '../types'
+import { appOrigin } from '../app-origin'
 
 /**
  * Where the site lives, and what "open in browser" must point at.
@@ -40,7 +41,7 @@ const SITE_URL = 'https://novelmtl.app'
  */
 function resolveApiBase(): string {
   if (typeof location === 'undefined') return SITE_URL
-  return new URL('/novelmtl', location.origin).toString()
+  return new URL('/novelmtl', appOrigin()).toString()
 }
 
 /**
@@ -75,6 +76,10 @@ const SORT_VALUES = [
   ['Popular', 'clicks_desc'],
   ['Latest', 'created_desc'],
 ] as const
+
+export interface NovelMtlFilterData {
+  genres: string[]
+}
 
 /**
  * NovelMTL.
@@ -124,7 +129,7 @@ export class NovelMtl implements Source {
   readonly isLocal = false
   /** See the note on the class: the site has no cover art to serve. */
   readonly hasCovers = false
-  readonly supportsFilterFetching = false
+  readonly supportsFilterFetching = true
   readonly supportsRelatedMangas = false
 
   /**
@@ -162,7 +167,9 @@ export class NovelMtl implements Source {
     signal?: AbortSignal,
   ): Promise<MangasPage> {
     const term = query.trim()
-    if (!term) return await this.listing(sortOf(filters), page, signal)
+    if (!term) {
+      return await this.listing(sortOf(filters), page, signal, genresOf(filters))
+    }
 
     const url = new URL(`${this.apiBase}/api/novels/search`)
     url.searchParams.set('q', term)
@@ -174,9 +181,11 @@ export class NovelMtl implements Source {
     sortBy: string,
     page: number,
     signal?: AbortSignal,
+    genres: string[] = [],
   ): Promise<MangasPage> {
     const url = new URL(`${this.apiBase}/api/novels`)
     url.searchParams.set('sortBy', sortBy)
+    for (const genre of genres) url.searchParams.append('genres', genre)
     applyCursor(url, page)
     return this.fetchListing(url, signal)
   }
@@ -323,8 +332,52 @@ export class NovelMtl implements Source {
 
   // -------------------------------------------------------------- filters --
 
-  getFilterList(): FilterList {
-    return [sortFilter()]
+  /**
+   * The genre vocabulary, read off the home document.
+   *
+   * The API exposes no genre endpoint, but the rendered page carries the whole
+   * list in its serialised state. Fetching it matters: the listing answers an
+   * unknown genre name with zero rows rather than an error, so a guessed name
+   * would empty the grid silently.
+   */
+  async fetchFilterData(signal?: AbortSignal): Promise<NovelMtlFilterData> {
+    try {
+      const res = await this.http.fetch({ url: `${this.apiBase}/`, signal })
+      const html = await res.text()
+      const match = /"availableGenres":(\[.*?\])/s.exec(html)
+      if (!match) return { genres: [] }
+
+      const parsed: unknown = JSON.parse(match[1])
+      if (
+        !Array.isArray(parsed) ||
+        !parsed.every(
+          (genre) => typeof genre === 'string' && genre.trim().length > 0,
+        )
+      ) {
+        return { genres: [] }
+      }
+      return { genres: parsed as string[] }
+    } catch {
+      signal?.throwIfAborted()
+      return { genres: [] }
+    }
+  }
+
+  getFilterList(data?: unknown): FilterList {
+    const genres = (data as NovelMtlFilterData | undefined)?.genres ?? []
+
+    return [
+      sortFilter(),
+      {
+        type: 'group',
+        name: 'Genres',
+        state: genres.map((genre) => ({
+          type: 'checkbox' as const,
+          name: genre,
+          state: false,
+        })),
+      },
+    ]
   }
 
   // ----------------------------------------------------------------- urls --
@@ -489,4 +542,21 @@ function sortOf(filters: FilterList): string {
     return SORT_VALUES[filter.state.index]?.[1] ?? 'clicks_desc'
   }
   return 'clicks_desc'
+}
+
+/**
+ * The checked genre names, which the listing takes verbatim.
+ *
+ * Repeats narrow: `genres=Horror&genres=Romance` answers with the novels
+ * carrying both.
+ */
+function genresOf(filters: FilterList): string[] {
+  const names: string[] = []
+  for (const filter of filters) {
+    if (filter.type !== 'group' || filter.name !== 'Genres') continue
+    for (const child of filter.state) {
+      if (child.type === 'checkbox' && child.state) names.push(child.name)
+    }
+  }
+  return names
 }

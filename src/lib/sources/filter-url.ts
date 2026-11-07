@@ -140,12 +140,14 @@ function isSortState(
 }
 
 /**
- * The index path of the toggle standing for `genre`, if the source has one.
+ * The index path of the filter standing for `genre`, if the source has one.
  *
  * Matched on the label a source shows, case-insensitively, because that is the
  * only thing a series' tag and a source's filter list have in common. Groups
  * are walked into, so it makes no difference whether a source files its genres
- * under a "Genres" heading or lists them flat.
+ * under a "Genres" heading or lists them flat. A toggle matches by its own
+ * name; a select matches only when it is itself named Genre or Genres, and
+ * resolves to the index of the wanted value.
  */
 export function findGenreFilterPath(
   filters: FilterList,
@@ -164,6 +166,16 @@ export function findGenreFilterPath(
       if (filter.type === 'group') {
         const found = search(filter.state, path)
         if (found) return found
+        continue
+      }
+
+      if (filter.type === 'select') {
+        const label = filter.name.trim().toLowerCase()
+        if (label !== 'genre' && label !== 'genres') continue
+        const value = filter.values.findIndex(
+          (entry) => entry.trim().toLowerCase() === wanted,
+        )
+        if (value >= 0) return { path, value }
         continue
       }
 

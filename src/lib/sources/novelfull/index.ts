@@ -1,3 +1,4 @@
+import { parseDocument } from '../../text/document'
 import { DirectFetchTransport, RateLimiter } from '../../transport/direct-fetch'
 import type { HttpTransport } from '../../transport/types'
 import { sanitizeChapterHtml } from '../../text/sanitize'
@@ -13,6 +14,7 @@ import type {
   SManga,
   Source,
 } from '../types'
+import { appOrigin } from '../app-origin'
 
 /** Where the site lives, and what "open in browser" must point at. */
 const SITE_URL = 'https://novelfull.com'
@@ -32,7 +34,7 @@ const SITE_URL = 'https://novelfull.com'
  */
 function resolveApiBase(): string {
   if (typeof location === 'undefined') return SITE_URL
-  return new URL('/novelfull', location.origin).toString()
+  return new URL('/novelfull', appOrigin()).toString()
 }
 
 /**
@@ -53,9 +55,64 @@ const RATE_LIMIT_PERIOD_MS = 1000
  */
 const SORT_VALUES = [
   ['Most popular', 'most-popular'],
+  ['Hot', 'hot-novel'],
   ['Latest release', 'latest-release-novel'],
   ['Completed', 'completed-novel'],
 ] as const
+
+/**
+ * Genre archives, from the site's own genre menu.
+ *
+ * Each value is the literal href tail, so the spaces arrive already encoded as
+ * `+` and must not be encoded again.
+ */
+const GENRE_VALUES: readonly (readonly [string, string])[] = [
+  ['All', ''],
+  ['Action', 'Action'],
+  ['Adult', 'Adult'],
+  ['Adventure', 'Adventure'],
+  ['Comedy', 'Comedy'],
+  ['Drama', 'Drama'],
+  ['Eastern', 'Eastern'],
+  ['Ecchi', 'Ecchi'],
+  ['Fan-fic', 'Fan-fic'],
+  ['Fantasy', 'Fantasy'],
+  ['Game', 'Game'],
+  ['Gender Bender', 'Gender+Bender'],
+  ['Harem', 'Harem'],
+  ['Historical', 'Historical'],
+  ['History', 'History'],
+  ['Horror', 'Horror'],
+  ['Josei', 'Josei'],
+  ['Lolicon', 'Lolicon'],
+  ['Magical Realism', 'Magical+Realism'],
+  ['Martial', 'Martial'],
+  ['Martial Arts', 'Martial+Arts'],
+  ['Mature', 'Mature'],
+  ['Mecha', 'Mecha'],
+  ['Mystery', 'Mystery'],
+  ['Psychologic', 'Psychologic'],
+  ['Psychological', 'Psychological'],
+  ['Reincarnation', 'Reincarnation'],
+  ['Romance', 'Romance'],
+  ['School Life', 'School+Life'],
+  ['Sci-fi', 'Sci-fi'],
+  ['Seinen', 'Seinen'],
+  ['Shoujo', 'Shoujo'],
+  ['Shounen', 'Shounen'],
+  ['Shounen Ai', 'Shounen+Ai'],
+  ['Slice of Life', 'Slice+of+Life'],
+  ['Smut', 'Smut'],
+  ['Sports', 'Sports'],
+  ['Supernatural', 'Supernatural'],
+  ['System', 'System'],
+  ['Tragedy', 'Tragedy'],
+  ['Wuxia', 'Wuxia'],
+  ['Xianxia', 'Xianxia'],
+  ['Xuanhuan', 'Xuanhuan'],
+  ['Yaoi', 'Yaoi'],
+  ['Yuri', 'Yuri'],
+]
 
 /**
  * NovelFull.
@@ -110,6 +167,10 @@ export class NovelFull implements Source {
     return this.listing('most-popular', page, signal)
   }
 
+  getHotManga(page: number, signal?: AbortSignal): Promise<MangasPage> {
+    return this.listing('hot-novel', page, signal)
+  }
+
   getLatestUpdates(page: number, signal?: AbortSignal): Promise<MangasPage> {
     return this.listing('latest-release-novel', page, signal)
   }
@@ -121,7 +182,11 @@ export class NovelFull implements Source {
     signal?: AbortSignal,
   ): Promise<MangasPage> {
     const term = query.trim()
-    if (!term) return await this.listing(listingOf(filters), page, signal)
+    if (!term) {
+      const genre = genreOf(filters)
+      if (genre) return await this.listing(`genre/${genre}`, page, signal)
+      return await this.listing(listingOf(filters), page, signal)
+    }
 
     const url = new URL(`${this.apiBase}/search`)
     url.searchParams.set('keyword', term)
@@ -296,7 +361,7 @@ export class NovelFull implements Source {
   }
 
   parseChapterText(raw: string): ChapterText {
-    const doc = new DOMParser().parseFromString(raw, 'text/html')
+    const doc = parseDocument(raw, 'text/html')
 
     const body =
       doc.querySelector('#chapter-content') ?? doc.querySelector('#chr-content')
@@ -322,7 +387,11 @@ export class NovelFull implements Source {
   // -------------------------------------------------------------- filters --
 
   getFilterList(): FilterList {
-    return [sortFilter()]
+    return [
+      sortFilter(),
+      selectFilter('Genre', GENRE_VALUES),
+      { type: 'header', name: 'A genre replaces the sort listing.' },
+    ]
   }
 
   // ----------------------------------------------------------------- urls --
@@ -338,18 +407,12 @@ export class NovelFull implements Source {
 
   // -------------------------------------------------------------- helpers --
 
-  /**
-   * Fetches a page and parses it.
-   *
-   * `DOMParser` is a browser API, so this source cannot run under Node without
-   * one being installed first — the reason it has no smoke script of its own.
-   */
   private async fetchDocument(
     url: string,
     signal?: AbortSignal,
   ): Promise<Document> {
     const res = await this.http.fetch({ url, signal })
-    return new DOMParser().parseFromString(await res.text(), 'text/html')
+    return parseDocument(await res.text(), 'text/html')
   }
 
   /** Site-relative paths resolved against the proxy, never against the site. */
@@ -474,6 +537,21 @@ function sortFilter(): Filter {
     values: SORT_VALUES.map(([label]) => label),
     state: { index: 0, ascending: false },
   }
+}
+
+function selectFilter(
+  name: string,
+  values: readonly (readonly [string, string])[],
+): Filter {
+  return { type: 'select', name, values: values.map(([label]) => label), state: 0 }
+}
+
+function genreOf(filters: FilterList): string {
+  for (const filter of filters) {
+    if (filter.type !== 'select' || filter.name !== 'Genre') continue
+    return GENRE_VALUES[filter.state]?.[1] ?? ''
+  }
+  return ''
 }
 
 function listingOf(filters: FilterList): string {

@@ -1,3 +1,4 @@
+import { parseDocument } from '../../text/document'
 import { DirectFetchTransport, RateLimiter } from '../../transport/direct-fetch'
 import type { HttpTransport } from '../../transport/types'
 import type {
@@ -20,6 +21,7 @@ import type {
   SeriesDetailResponse,
   SeriesDto,
 } from './dto'
+import { appOrigin } from '../app-origin'
 
 /** Where the site lives, and what "open in browser" must point at. */
 const SITE_URL = 'https://flamecomics.xyz'
@@ -39,12 +41,12 @@ const ICON_URL =
  */
 function resolveApiBase(): string {
   if (typeof location === 'undefined') return SITE_URL
-  return new URL('/flamecomics', location.origin).toString()
+  return new URL('/flamecomics', appOrigin()).toString()
 }
 
 function resolveCdnBase(): string {
   if (typeof location === 'undefined') return CDN_URL
-  return new URL('/flamecdn', location.origin).toString()
+  return new URL('/flamecdn', appOrigin()).toString()
 }
 
 /**
@@ -95,6 +97,11 @@ const TYPE_VALUES = [
  */
 const NOVEL_TYPES = new Set(['novel', 'web novel'])
 
+/** The genre vocabulary, read off the catalogue's own `categories`. */
+export interface FlameFilterData {
+  genres: string[]
+}
+
 /**
  * Flame Comics.
  *
@@ -115,7 +122,7 @@ export class FlameComics implements Source {
   readonly versionCode = 1
   readonly supportsLatest = true
   readonly isLocal = false
-  readonly supportsFilterFetching = false
+  readonly supportsFilterFetching = true
   readonly supportsRelatedMangas = false
   readonly pageFetchIntervalMs = PAGE_FETCH_INTERVAL_MS
 
@@ -267,11 +274,42 @@ export class FlameComics implements Source {
 
   // -------------------------------------------------------------- filters --
 
-  getFilterList(): FilterList {
+  async fetchFilterData(signal?: AbortSignal): Promise<FlameFilterData> {
+    try {
+      const body = await this.data<BrowseResponse>('browse.json', {}, signal)
+      const names = new Set<string>()
+      for (const dto of listable(body.pageProps.series)) {
+        for (const category of dto.categories ?? []) {
+          if (category) names.add(category)
+        }
+      }
+      return {
+        genres: [...names].sort((a, b) =>
+          a.toLowerCase().localeCompare(b.toLowerCase()),
+        ),
+      }
+    } catch {
+      signal?.throwIfAborted()
+      return { genres: [] }
+    }
+  }
+
+  getFilterList(data?: unknown): FilterList {
+    const genres = (data as FlameFilterData | undefined)?.genres ?? []
+
     return [
       sortFilter(),
       selectFilter('Status', STATUS_VALUES),
       selectFilter('Type', TYPE_VALUES),
+      {
+        type: 'group',
+        name: 'Genres',
+        state: genres.map((name) => ({
+          type: 'checkbox' as const,
+          name,
+          state: false,
+        })),
+      },
     ]
   }
 
@@ -341,7 +379,7 @@ export class FlameComics implements Source {
     if (this.buildId) return this.buildId
 
     const res = await this.http.fetch({ url: `${this.apiBase}/`, signal })
-    const doc = new DOMParser().parseFromString(await res.text(), 'text/html')
+    const doc = parseDocument(await res.text(), 'text/html')
     const raw = doc.querySelector('script#__NEXT_DATA__')?.textContent
     if (!raw) throw new Error('Flame Comics did not serve a readable home page.')
 
@@ -439,8 +477,7 @@ function buildDescription(dto: SeriesDto): string | undefined {
   const parts: string[] = []
 
   if (dto.description) {
-    const text = new DOMParser()
-      .parseFromString(dto.description, 'text/html')
+    const text = parseDocument(dto.description, 'text/html')
       .body.textContent?.trim()
     if (text) parts.push(text)
   }
@@ -513,6 +550,19 @@ function applyFilters(series: SeriesDto[], filters: FilterList): SeriesDto[] {
             ? (dto.status ?? '').toLowerCase() === value
             : (dto.type ?? '') === value,
         )
+        break
+      }
+      case 'group': {
+        if (filter.name !== 'Genres') break
+        const wanted: string[] = []
+        for (const child of filter.state) {
+          if (child.type === 'checkbox' && child.state) wanted.push(child.name)
+        }
+        if (!wanted.length) break
+        result = result.filter((dto) => {
+          const categories = dto.categories ?? []
+          return wanted.every((name) => categories.includes(name))
+        })
         break
       }
     }

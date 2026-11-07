@@ -1,3 +1,4 @@
+import { parseDocument } from '../../text/document'
 /**
  * `ComicInfo.xml`, the metadata format Mihon now prefers for local series.
  *
@@ -164,14 +165,12 @@ function readFields(text: string): Map<string, string> | null {
 }
 
 function readRoot(text: string): Element | null {
-  if (typeof DOMParser === 'undefined' || !text.trim()) return null
-
-  const parser = new DOMParser()
+  if (!text.trim()) return null
 
   // A malformed document does not throw: it parses into a `<parsererror>`
   // root, which this name check rejects along with any file that simply is not
   // a ComicInfo.
-  const root = parse(parser, text, 'application/xml')?.documentElement
+  const root = parse(text, 'application/xml')?.documentElement
   if (root && root.localName.toLowerCase() === 'comicinfo') return root
 
   // Files written by hand or by a third-party tagger routinely carry an
@@ -184,18 +183,17 @@ function readRoot(text: string): Element | null {
   // back half a title. Those are left to the folder name.
   if (!CLOSING_TAG.test(text)) return null
 
-  return parse(parser, text, 'text/html')?.querySelector('comicinfo') ?? null
+  return parse(text, 'text/html')?.querySelector('comicinfo') ?? null
 }
 
 const CLOSING_TAG = /<\/\s*comicinfo\s*>/i
 
 function parse(
-  parser: DOMParser,
   text: string,
   type: 'application/xml' | 'text/html',
 ): Document | null {
   try {
-    return parser.parseFromString(text, type)
+    return parseDocument(text, type)
   } catch {
     return null
   }

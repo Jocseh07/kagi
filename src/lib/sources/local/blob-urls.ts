@@ -57,6 +57,18 @@ class BlobUrlCache {
     return url
   }
 
+  /** Revokes one entry, for a book removed from the shelf. */
+  drop(key: string): void {
+    const url = this.urls.get(key)
+    if (!url) return
+    this.urls.delete(key)
+    URL.revokeObjectURL(url)
+  }
+
+  dropPrefix(prefix: string): void {
+    for (const key of this.urls.keys()) if (key.startsWith(prefix)) this.drop(key)
+  }
+
   clear(): void {
     for (const url of this.urls.values()) URL.revokeObjectURL(url)
     this.urls.clear()

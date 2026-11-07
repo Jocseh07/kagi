@@ -11,6 +11,7 @@ import { MangaPlus } from './mangaplus'
 import { Mangadot } from './mangadot'
 import { NovelFull } from './novelfull'
 import { NovelMtl } from './novelmtl'
+import { NovelPing } from './novelping'
 import { ThunderScans } from './thunderscans'
 import { Toonily } from './toonily'
 import { Webnovel } from './webnovel'
@@ -18,6 +19,7 @@ import { Webtoons } from './webtoons'
 import { WeebCentral } from './weebcentral'
 import { WuxiaWorld } from './wuxiaworld'
 import { sourceCatalog } from './catalog'
+import { webOnlySources } from './web-only'
 import { kindOf } from './types'
 import type { ContentKind, Source } from './types'
 
@@ -43,9 +45,11 @@ register(new NovelFull())
 register(new FenrirRealm())
 register(new Webnovel())
 register(new NovelMtl())
+register(new NovelPing())
 register(new WuxiaWorld())
 register(new LocalSource())
 register(new LocalNovelSource())
+for (const source of webOnlySources) register(source)
 
 assertCatalogMatches()
 
@@ -66,7 +70,7 @@ function assertCatalogMatches(): void {
   for (const entry of sourceCatalog) {
     const source = sources.get(entry.id)
     if (!source) {
-      problems.push(`${entry.id}: in the catalog but not registered`)
+      if (!entry.webOnly) problems.push(`${entry.id}: in the catalog but not registered`)
       continue
     }
     if (source.name !== entry.name) {

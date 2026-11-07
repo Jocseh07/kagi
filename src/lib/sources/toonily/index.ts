@@ -1,3 +1,4 @@
+import { parseDocument } from '../../text/document'
 import { DirectFetchTransport, RateLimiter } from '../../transport/direct-fetch'
 import type { HttpTransport } from '../../transport/types'
 import type {
@@ -11,6 +12,7 @@ import type {
   SManga,
   Source,
 } from '../types'
+import { appOrigin } from '../app-origin'
 
 /** Where the site lives, and what "open in browser" must point at. */
 const SITE_URL = 'https://toonily.com'
@@ -32,12 +34,12 @@ const ICON_URL =
  */
 function resolveApiBase(): string {
   if (typeof location === 'undefined') return SITE_URL
-  return new URL('/toonily', location.origin).toString()
+  return new URL('/toonily', appOrigin()).toString()
 }
 
 function resolveImageBase(): string | null {
   if (typeof location === 'undefined') return null
-  return new URL('/toonilycdn', location.origin).toString()
+  return new URL('/toonilycdn', appOrigin()).toString()
 }
 
 /** What one listing page holds. Fixed by the theme, not by a parameter. */
@@ -57,6 +59,39 @@ const SORT_VALUES = [
   ['Newest', 'new-manga'],
   ['Rating', 'rating'],
   ['A-Z', 'alphabet'],
+] as const
+
+const GENRE_VALUES = [
+  ['Action', 'action'],
+  ['Adventure', 'adventure'],
+  ['Comedy', 'comedy'],
+  ['Crime', 'crime'],
+  ['Drama', 'drama'],
+  ['Fantasy', 'fantasy'],
+  ['Gossip', 'gossip'],
+  ['Historical', 'historical'],
+  ['Horror', 'horror'],
+  ['Isekai', 'isekai'],
+  ['Josei', 'josei'],
+  ['Magic', 'magic'],
+  ['Mature', 'mature'],
+  ['Mystery', 'mystery'],
+  ['Psychological', 'psychological'],
+  ['Romance', 'romance'],
+  ['School Life', 'school-life'],
+  ['Sci-Fi', 'scifi-webtoon'],
+  ['Seinen', 'seinen'],
+  ['Shoujo', 'shoujo'],
+  ['Shounen', 'shounen'],
+  ['Slice of Life', 'slice-of-life'],
+  ['Sports', 'sports'],
+  ['Supernatural', 'supernatural'],
+  ['Thriller', 'thriller'],
+  ['Tragedy', 'tragedy'],
+  ['Villainess', 'villainess'],
+  ['Wuxia', 'wuxia'],
+  ['Yaoi', 'yaoi'],
+  ['Yuri', 'yuri'],
 ] as const
 
 /**
@@ -157,6 +192,19 @@ export class Toonily implements Source {
   }
 
   private listingUrl(filters: FilterList, page: number): string {
+    const genres = readGenres(filters)
+    if (genres.length) {
+      const url = new URL(
+        page > 1 ? `${this.apiBase}/page/${page}/` : `${this.apiBase}/`,
+      )
+      url.searchParams.set('s', '')
+      url.searchParams.set('post_type', 'wp-manga')
+      for (const slug of genres) url.searchParams.append('genre[]', slug)
+      url.searchParams.set('op', '1')
+      url.searchParams.set('m_orderby', readSort(filters))
+      return url.toString()
+    }
+
     const url = new URL(
       page > 1
         ? `${this.apiBase}/serie/page/${page}/`
@@ -260,15 +308,26 @@ export class Toonily implements Source {
   // -------------------------------------------------------------- filters --
 
   /**
-   * Sort only.
+   * Sort, and the genres the theme's own search form carries.
    *
-   * The theme's status and genre filters are part of a form this source does
-   * not post, and sending their parameters on the listing url was measured to
-   * change nothing. A filter that silently does not filter is worse than no
-   * filter, so they are left out.
+   * Genres are not sent on the `/serie/` archive, which ignores them; a
+   * checked genre switches the listing to the search form url instead, where
+   * `op=1` makes a second checked genre narrow the result rather than widen
+   * it. Status is still left out: its parameters change nothing on either url.
    */
   getFilterList(): FilterList {
-    return [sortFilter()]
+    return [
+      sortFilter(),
+      {
+        type: 'group',
+        name: 'Genres',
+        state: GENRE_VALUES.map(([label]) => ({
+          type: 'checkbox' as const,
+          name: label,
+          state: false,
+        })),
+      },
+    ]
   }
 
   // ----------------------------------------------------------------- urls --
@@ -314,7 +373,7 @@ export class Toonily implements Source {
     signal?: AbortSignal,
   ): Promise<Document> {
     const res = await this.http.fetch({ url, signal })
-    return new DOMParser().parseFromString(await res.text(), 'text/html')
+    return parseDocument(await res.text(), 'text/html')
   }
 }
 
@@ -479,4 +538,17 @@ function readSort(filters: FilterList): string {
     if (filter.type === 'sort') return SORT_VALUES[filter.state.index]![1]
   }
   return 'views'
+}
+
+function readGenres(filters: FilterList): string[] {
+  const slugs: string[] = []
+  for (const filter of filters) {
+    if (filter.type !== 'group' || filter.name !== 'Genres') continue
+    for (const child of filter.state) {
+      if (child.type !== 'checkbox' || !child.state) continue
+      const pair = GENRE_VALUES.find(([label]) => label === child.name)
+      if (pair) slugs.push(pair[1])
+    }
+  }
+  return slugs
 }

@@ -1,5 +1,7 @@
+import { sourceProxyPolicies } from '@/lib/transport/source-policy'
 import { createFileRoute } from '@tanstack/react-router'
 
+import { runServer } from '@/server/effect/run'
 import { proxyTo } from '@/server/proxy'
 
 // Asura's API does send CORS, but only by reflecting the request's `Origin`,
@@ -11,12 +13,10 @@ import { proxyTo } from '@/server/proxy'
 // `redirects: 'manual'` matches the other proxies. The API answers no
 // redirects today; passing them back rewritten costs nothing and means a future
 // one does not silently escape the proxy and fail the CORS check.
-const handler = ({ request }: { request: Request }) =>
-  proxyTo(request, {
-    prefix: '/asurascans',
-    target: 'https://api.asurascans.com',
-    redirects: 'manual',
-  })
+const handler = async ({ request }: { request: Request }) =>
+  await runServer(
+    proxyTo(request, sourceProxyPolicies['/asurascans']),
+  )
 
 export const Route = createFileRoute('/asurascans/$')({
   server: {

@@ -1,3 +1,4 @@
+import { parseDocument } from '../../text/document'
 import { DirectFetchTransport, RateLimiter } from '../../transport/direct-fetch'
 import type { HttpTransport } from '../../transport/types'
 import type {
@@ -11,6 +12,7 @@ import type {
   SManga,
   Source,
 } from '../types'
+import { appOrigin } from '../app-origin'
 
 /**
  * Where the site lives, and what "open in browser" must point at.
@@ -47,7 +49,7 @@ const ICON_URL =
  */
 function resolveApiBase(): string {
   if (typeof location === 'undefined') return SITE_URL
-  return new URL('/thunderscans', location.origin).toString()
+  return new URL('/thunderscans', appOrigin()).toString()
 }
 
 /**
@@ -96,6 +98,10 @@ const TYPE_VALUES = [
   ['Comic', 'comic'],
 ] as const
 
+export interface ThunderFilterData {
+  genres: Array<{ label: string; value: string }>
+}
+
 /**
  * Thunder Scans.
  *
@@ -134,13 +140,18 @@ export class ThunderScans implements Source {
   readonly versionCode = 1
   readonly supportsLatest = true
   readonly isLocal = false
-  /** Sort, status and type are all static; nothing has to be fetched first. */
-  readonly supportsFilterFetching = false
+  /**
+   * The genre ids are numeric and site-specific, so the sheet has to read them
+   * off the site's own search form before it can offer them.
+   */
+  readonly supportsFilterFetching = true
   readonly supportsRelatedMangas = false
   readonly pageFetchIntervalMs = PAGE_FETCH_INTERVAL_MS
 
   private readonly http: HttpTransport
   private readonly apiBase: string
+  /** Genre label to the numeric id the site filters by. */
+  private readonly genreIds = new Map<string, string>()
 
   constructor(transport?: HttpTransport, apiBase = resolveApiBase()) {
     this.apiBase = apiBase.replace(/\/$/, '')
@@ -160,11 +171,11 @@ export class ThunderScans implements Source {
   // ------------------------------------------------------------- browsing --
 
   getPopularManga(page: number, signal?: AbortSignal): Promise<MangasPage> {
-    return this.listing(page, { order: 'popular' }, signal)
+    return this.listing(page, new URLSearchParams({ order: 'popular' }), signal)
   }
 
   getLatestUpdates(page: number, signal?: AbortSignal): Promise<MangasPage> {
-    return this.listing(page, { order: 'update' }, signal)
+    return this.listing(page, new URLSearchParams({ order: 'update' }), signal)
   }
 
   async getSearchMangaList(
@@ -186,19 +197,19 @@ export class ThunderScans implements Source {
       return await this.scrapeList(url.toString(), signal)
     }
 
-    return await this.listing(page, paramsOf(filters), signal)
+    return await this.listing(page, paramsOf(filters, this.genreIds), signal)
   }
 
   private async listing(
     page: number,
-    params: Record<string, string>,
+    params: URLSearchParams,
     signal?: AbortSignal,
   ): Promise<MangasPage> {
     const url = new URL(`${this.apiBase}${MANGA_DIR}/`)
     // `?page=1` is redirected away rather than served, so it is never sent.
     if (page > 1) url.searchParams.set('page', String(page))
-    for (const [key, value] of Object.entries(params)) {
-      if (value) url.searchParams.set(key, value)
+    for (const [key, value] of params) {
+      if (value) url.searchParams.append(key, value)
     }
     return await this.scrapeList(url.toString(), signal)
   }
@@ -324,12 +335,68 @@ export class ThunderScans implements Source {
 
   // -------------------------------------------------------------- filters --
 
-  getFilterList(): FilterList {
+  async fetchFilterData(signal?: AbortSignal): Promise<ThunderFilterData> {
+    const genres = await this.fetchGenres(signal)
+    this.rememberGenres(genres)
+    return { genres }
+  }
+
+  /**
+   * The genre ids, read off the advanced-search form on the directory page.
+   *
+   * There is deliberately no snapshot to fall back on: the ids are numeric and
+   * belong to the site's own taxonomy, so a stale one would filter to the wrong
+   * genre rather than to nothing. An empty list leaves the sheet with sort,
+   * status and type.
+   */
+  private async fetchGenres(
+    signal?: AbortSignal,
+  ): Promise<ThunderFilterData['genres']> {
+    try {
+      const doc = await this.fetchDocument(`${this.apiBase}${MANGA_DIR}/`, signal)
+      return [...doc.querySelectorAll('ul.genrez li')]
+        .map((li) => ({
+          label:
+            li.querySelector('label')?.textContent?.trim() ||
+            li.textContent?.trim() ||
+            '',
+          value:
+            li
+              .querySelector('input[name="genre[]"]')
+              ?.getAttribute('value')
+              ?.trim() ?? '',
+        }))
+        .filter((genre) => genre.label && genre.value)
+    } catch {
+      signal?.throwIfAborted()
+      return []
+    }
+  }
+
+  getFilterList(data?: unknown): FilterList {
+    const genres = (data as ThunderFilterData | undefined)?.genres ?? []
+    // Search reads the instance map rather than this argument, which the app
+    // does not thread back into `getSearchMangaList`.
+    if (genres.length) this.rememberGenres(genres)
+
     return [
       sortFilter(),
       selectFilter('Status', STATUS_VALUES),
       selectFilter('Type', TYPE_VALUES),
+      {
+        type: 'group',
+        name: 'Genres',
+        state: genres.map((genre) => ({
+          type: 'checkbox' as const,
+          name: genre.label,
+          state: false,
+        })),
+      },
     ]
+  }
+
+  private rememberGenres(genres: ThunderFilterData['genres']): void {
+    for (const genre of genres) this.genreIds.set(genre.label, genre.value)
   }
 
   // ----------------------------------------------------------------- urls --
@@ -344,19 +411,12 @@ export class ThunderScans implements Source {
 
   // -------------------------------------------------------------- helpers --
 
-  /**
-   * Fetches a page and parses it.
-   *
-   * `DOMParser` is a browser API, so this source cannot run under Node without
-   * one being installed first — the reason it has no smoke script, the same
-   * position `novelfull` is in.
-   */
   private async fetchDocument(
     url: string,
     signal?: AbortSignal,
   ): Promise<Document> {
     const res = await this.http.fetch({ url, signal })
-    return new DOMParser().parseFromString(await res.text(), 'text/html')
+    return parseDocument(await res.text(), 'text/html')
   }
 
   /**
@@ -524,20 +584,31 @@ const SELECT_PARAMS: Record<
   Type: { param: 'type', table: TYPE_VALUES },
 }
 
-function paramsOf(filters: FilterList): Record<string, string> {
-  const params: Record<string, string> = { order: SORT_VALUES[0][1] }
+function paramsOf(
+  filters: FilterList,
+  genreIds: Map<string, string>,
+): URLSearchParams {
+  const params = new URLSearchParams({ order: SORT_VALUES[0][1] })
 
   for (const filter of filters) {
     switch (filter.type) {
       case 'sort': {
-        params.order = SORT_VALUES[filter.state.index]?.[1] ?? ''
+        params.set('order', SORT_VALUES[filter.state.index]?.[1] ?? '')
         break
       }
       case 'select': {
         const mapping = SELECT_PARAMS[filter.name]
         if (!mapping) break
         const value = mapping.table[filter.state]?.[1]
-        if (value) params[mapping.param] = value
+        if (value) params.set(mapping.param, value)
+        break
+      }
+      case 'group': {
+        for (const child of filter.state) {
+          if (child.type !== 'checkbox' || !child.state) continue
+          const id = genreIds.get(child.name)
+          if (id) params.append('genre[]', id)
+        }
         break
       }
     }

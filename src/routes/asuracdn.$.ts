@@ -1,5 +1,7 @@
+import { sourceProxyPolicies } from '@/lib/transport/source-policy'
 import { createFileRoute } from '@tanstack/react-router'
 
+import { runServer } from '@/server/effect/run'
 import { proxyTo } from '@/server/proxy'
 
 // Asura's covers and page images live on `cdn.asurascans.com`, which sends no
@@ -12,12 +14,10 @@ import { proxyTo } from '@/server/proxy'
 //
 // A separate prefix from `/asurascans` because `proxyTo` maps one prefix to one
 // origin, and these are two hosts.
-const handler = ({ request }: { request: Request }) =>
-  proxyTo(request, {
-    prefix: '/asuracdn',
-    target: 'https://cdn.asurascans.com',
-    redirects: 'manual',
-  })
+const handler = async ({ request }: { request: Request }) =>
+  await runServer(
+    proxyTo(request, sourceProxyPolicies['/asuracdn']),
+  )
 
 export const Route = createFileRoute('/asuracdn/$')({
   server: {

@@ -74,6 +74,15 @@ export interface ChapterDto {
   relationships: Relationship[]
 }
 
+/** `/manga/tag`: the site's whole tag vocabulary, bucketed by `group`. */
+export interface TagDto {
+  id: string
+  attributes: {
+    name: Record<string, string>
+    group: string
+  }
+}
+
 /** `/at-home/server/<id>`: where this chapter's images are, for the next while. */
 export interface AtHomeResponse {
   result: string
