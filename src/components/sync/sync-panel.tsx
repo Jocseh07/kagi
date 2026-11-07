@@ -1,5 +1,5 @@
 /**
- * Settings → Sync. Where sync is explained, and the only place its state is
+ * The body of Settings → Account's Sync group. The only place sync state is
  * reported in full: the count in words, the last run, an account mismatch, what
  * a failure means. The header button is the same action without any of that.
  *
@@ -13,11 +13,10 @@
 
 import { useEffect, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useAuth, useUser } from '@clerk/react'
+import { useUser } from '@clerk/react'
 import { CloudOff, RefreshCw, TriangleAlert } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
 import { useEntitlement } from '@/lib/billing/use-entitlement'
 import {
   getPendingHint,
@@ -40,10 +39,8 @@ function formatWhen(at: number | null): string {
   return `Synced ${new Date(at).toLocaleDateString()}`
 }
 
-export function SyncPanel() {
-  // `undefined` until Clerk answers. Told apart from "signed out" so the panel
-  // does not flash a sign-in prompt at somebody who is already signed in.
-  const { isSignedIn } = useAuth()
+/** Rendered by the Account panel once Clerk reports a signed-in session. */
+export function SyncStatus() {
   const { user } = useUser()
   const { running, lastOutcome, sync } = useSync()
   const entitled = useSyncEntitled()
@@ -73,102 +70,89 @@ export function SyncPanel() {
   )
 
   return (
-    <section className="rounded-lg border border-border bg-card">
-      <header className="flex items-baseline justify-between gap-3 border-b border-border px-4 py-3">
-        <h2 className="text-sm font-medium">Sync</h2>
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {isSignedIn ? formatWhen(status.data?.lastAt ?? null) : 'Signed out'}
-        </span>
-      </header>
-
-      {isSignedIn === undefined ? (
-        <div className="space-y-3 px-4 py-4">
-          <Skeleton className="h-8 w-24" />
-          <Skeleton className="h-9 w-32" />
-        </div>
-      ) : isSignedIn ? (
-        <div className="space-y-4 px-4 py-4">
-          <div className="space-y-1">
-            <p className="text-3xl font-semibold tracking-tight tabular-nums sm:text-2xl">
-              {pending}
-            </p>
-            <p className="text-base text-muted-foreground sm:text-sm">
-              {pending === 1
-                ? 'change waiting to send'
-                : 'changes waiting to send'}
-            </p>
-          </div>
-
-          <Button
-            disabled={running || mismatch || !entitled || !ready}
-            onClick={() => void sync()}
-          >
-            <RefreshCw className={running ? 'size-4 animate-spin' : 'size-4'} />
-            {running ? 'Syncing…' : 'Sync now'}
-          </Button>
-
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            Syncs when you finish or leave a chapter, when you return to the
-            app, and when you sign in. Sync now runs it right away.
+    <div className="space-y-4 px-4 py-4">
+      <div className="flex flex-col gap-4 @md:flex-row @md:items-end @md:justify-between">
+        <div className="min-w-0 space-y-1">
+          <p className="text-3xl font-semibold tracking-tight tabular-nums md:text-2xl">
+            {pending}
           </p>
-
-          {mismatch ? (
-            <p className="flex items-start gap-2 rounded-md border border-destructive/40 p-3 text-xs text-muted-foreground">
-              <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
-              <span>
-                This library is already linked to a different account. Sign in as
-                that account, or erase the library from the Data tab before
-                syncing this one.
-              </span>
-            </p>
-          ) : null}
-
-          {plan.active === false && !mismatch ? (
-            <p className="text-xs text-muted-foreground">
-              Sync needs the plan above. Your library stays on this device.
-            </p>
-          ) : null}
-
-          {!ready ? (
-            <p className="text-xs text-muted-foreground">
-              Waiting for the library database…
-            </p>
-          ) : null}
-
-          {lastOutcome && !running && !mismatch ? (
-            <SyncResult outcome={lastOutcome} />
-          ) : null}
+          <p className="text-sm text-muted-foreground">
+            {pending === 1 ? 'change waiting to send' : 'changes waiting to send'}
+          </p>
         </div>
+
+        <Button
+          className="h-10 w-full md:h-9 @md:w-auto"
+          disabled={running || mismatch || !entitled || !ready}
+          onClick={() => void sync()}
+        >
+          <RefreshCw className={running ? 'animate-spin motion-reduce:animate-none' : undefined} />
+          {running ? 'Syncing…' : 'Sync now'}
+        </Button>
+      </div>
+
+      {lastOutcome?.error && !running && !mismatch ? (
+        <SyncFailure error={lastOutcome.error} />
       ) : (
-        <p className="px-4 py-4 text-sm text-muted-foreground">Sign in above to sync.</p>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {formatWhen(status.data?.lastAt ?? null)}.{' '}
+          {lastOutcome && !running && !mismatch ? <SyncResult outcome={lastOutcome} /> : null}
+          Runs on its own when you finish or leave a chapter, come back to the
+          app, or sign in.
+        </p>
       )}
-    </section>
+
+      {mismatch ? (
+        <p className="flex items-start gap-2 rounded-md border border-destructive/40 p-3 text-xs text-muted-foreground">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
+          <span>
+            This library is already linked to a different account. Sign in as
+            that account, or erase the library from the Data tab before
+            syncing this one.
+          </span>
+        </p>
+      ) : null}
+
+      {plan.active === false && !mismatch ? (
+        <p className="text-xs text-muted-foreground">
+          Sync needs the plan below. Your library stays on this device.
+        </p>
+      ) : null}
+
+      {!ready ? (
+        <p className="text-xs text-muted-foreground">
+          Loading…
+        </p>
+      ) : null}
+    </div>
   )
 }
 
-function SyncResult({ outcome }: { outcome: SyncOutcome }) {
-  if (outcome.error) {
-    return (
-      <p
-        role="alert"
-        className="flex items-start gap-2 rounded-md border border-border p-3 text-xs text-muted-foreground"
-      >
-        <CloudOff className="mt-0.5 size-4 shrink-0" />
-        <span>
-          Sync did not finish: {outcome.error} Your library is safe on this
-          device, and the next press resumes where this one stopped.
-        </span>
-      </p>
-    )
-  }
+function SyncFailure({ error }: { error: string }) {
+  return (
+    <p
+      role="alert"
+      className="flex items-start gap-2 rounded-md border border-destructive/40 p-3 text-xs text-muted-foreground"
+    >
+      <CloudOff className="mt-0.5 size-4 shrink-0 text-destructive" />
+      <span>
+        <span className="font-medium text-foreground">Sync did not finish.</span>{' '}
+        {error} Your library is safe on this device, and the next sync picks up
+        where this one stopped.
+      </span>
+    </p>
+  )
+}
 
+/** The last successful run, as the middle sentence of the status line. */
+function SyncResult({ outcome }: { outcome: SyncOutcome }) {
   if (outcome.pushed === 0 && outcome.pulled === 0) {
-    return <p className="text-xs text-muted-foreground">Already up to date.</p>
+    return <>Already up to date. </>
   }
 
   return (
-    <p className="text-xs tabular-nums text-muted-foreground">
-      Sent {outcome.pushed} · received {outcome.pulled}
-    </p>
+    <span className="tabular-nums">
+      Last sync sent {outcome.pushed} and received {outcome.pulled}.{' '}
+    </span>
   )
 }

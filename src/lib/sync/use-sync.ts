@@ -15,15 +15,22 @@
  * waiting, and repeats until both sides are drained.
  */
 
-import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
-import { useAuth } from '@clerk/react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useEntitlement } from '@/lib/billing/use-entitlement'
 import { setPendingHint } from '@/lib/db/change-signal'
 import { useDatabaseReady } from '@/lib/db/provider'
+import { getSetting } from '@/lib/db/repositories'
+import { useAccountAuth } from './use-account-auth'
 import { pendingCount } from './local'
-import { getSyncState, runSync, subscribeSyncState } from './client'
+import {
+  SETTING_SYNC_LAST_AT,
+  getSyncState,
+  runSync,
+  subscribeSyncState,
+} from './client'
+import { setFirstSyncPending } from './first-sync'
 import type { SyncState } from './client'
 
 /**
@@ -38,13 +45,13 @@ import type { SyncState } from './client'
  * entitled" and simply disables the button until it is known.
  */
 export function useSyncEntitled(): boolean {
-  const { isSignedIn } = useAuth()
+  const { isSignedIn } = useAccountAuth()
   const { active } = useEntitlement()
   return isSignedIn === true && active === true
 }
 
 export function useSync(): SyncState & { sync: () => Promise<void> } {
-  const { userId, getToken } = useAuth()
+  const { userId, getToken } = useAccountAuth()
   const entitled = useSyncEntitled()
   const queryClient = useQueryClient()
   const state = useSyncExternalStore(subscribeSyncState, getSyncState, getSyncState)
@@ -90,8 +97,9 @@ export function useSync(): SyncState & { sync: () => Promise<void> } {
  * throw. Nothing here reports; `runSync` swallows its own failures.
  */
 export function useSyncOnSignIn(): void {
-  const { isLoaded, userId } = useAuth()
+  const { isLoaded, userId } = useAccountAuth()
   const entitled = useSyncEntitled()
+  const { loading: planLoading } = useEntitlement()
   const ready = useDatabaseReady()
   const { sync } = useSync()
 
@@ -108,11 +116,32 @@ export function useSyncOnSignIn(): void {
   }, [ready])
 
   const syncedFor = useRef<string | null>(null)
+  const [settledFor, setSettledFor] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isLoaded || !ready || !entitled || !userId) return
     if (syncedFor.current === userId) return
     syncedFor.current = userId
-    void sync()
+    void sync().finally(() => setSettledFor(userId))
   }, [isLoaded, ready, entitled, userId, sync])
+
+  // A device that has never finished a sync is the one whose library is about
+  // to arrive, so Home and Library draw it loading rather than empty. The plan
+  // check counts as pending too: the run cannot start until it answers.
+  const lastAt = useQuery({
+    queryKey: ['sync', 'last-at', userId ?? null],
+    queryFn: () => getSetting(SETTING_SYNC_LAST_AT),
+    enabled: ready && Boolean(userId),
+  })
+  const pending =
+    isLoaded &&
+    Boolean(userId) &&
+    lastAt.isSuccess &&
+    !lastAt.data &&
+    settledFor !== userId &&
+    (entitled || planLoading)
+
+  useEffect(() => {
+    setFirstSyncPending(pending)
+  }, [pending])
 }

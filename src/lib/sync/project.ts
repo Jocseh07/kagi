@@ -93,7 +93,7 @@ interface SeriesRow {
  * enough that the query reads a handful of rows, and the alternative is an OR
  * of paired conditions that no index would serve any better.
  */
-async function seriesByKey(
+export async function seriesByKey(
   tx: DbTransaction,
   keys: readonly string[],
 ): Promise<Map<string, SeriesRow>> {
@@ -116,7 +116,7 @@ async function seriesByKey(
 }
 
 /** Chapter ids for chapter keys, keyed by the full chapter key. */
-async function chapterIdByKey(
+export async function chapterIdByKey(
   tx: DbTransaction,
   keys: readonly string[],
 ): Promise<Map<string, string>> {

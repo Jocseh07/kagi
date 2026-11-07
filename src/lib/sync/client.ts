@@ -20,15 +20,18 @@
 import { setPendingHint } from '@/lib/db/change-signal'
 import { getSetting, setSetting } from '@/lib/db/repositories'
 import {
+  anyRowsCreated,
   applyPulled,
   collectPending,
   markPushed,
+  noRowsCreated,
   pendingCount,
   reprojectDeferred,
 } from './local'
 import { MAX_PUSH_BATCH, parseCursor } from './protocol'
 import type { PullResponse, PushResponse, SyncFact } from './protocol'
 import { seedLedger } from './seed'
+import { apiUrl } from '@/lib/sources/app-origin'
 
 /** Last server sequence this device has applied. */
 export const SETTING_SYNC_PULL_CURSOR = 'sync.pull_cursor'
@@ -74,7 +77,7 @@ async function authorizedFetch(
   const token = await getToken()
   if (!token) throw new Error('Not signed in.')
 
-  const response = await fetch(path, {
+  const response = await fetch(apiUrl(path), {
     ...init,
     headers: {
       ...init?.headers,
@@ -134,7 +137,7 @@ async function pull(getToken: TokenSource): Promise<{ pulled: number; drained: b
   let cursor = parseCursor(await getSetting(SETTING_SYNC_PULL_CURSOR))
   let total = 0
   let drained = false
-  let created = false
+  const created = noRowsCreated()
 
   for (let pass = 0; pass < MAX_PULL_PASSES; pass += 1) {
     const response = await authorizedFetch(
@@ -143,9 +146,8 @@ async function pull(getToken: TokenSource): Promise<{ pulled: number; drained: b
     )
     const result = (await response.json()) as PullResponse
 
-    const applied = await applyPulled(result.facts)
+    const applied = await applyPulled(result.facts, created)
     total += applied.applied
-    created ||= applied.created
 
     cursor = parseCursor(result.cursor)
     await setSetting(SETTING_SYNC_PULL_CURSOR, String(cursor))
@@ -159,7 +161,7 @@ async function pull(getToken: TokenSource): Promise<{ pulled: number; drained: b
   // Only once everything has landed. Facts that needed a series or a category
   // that arrived in a later batch than they did are projected here, where the
   // whole picture is finally present.
-  if (drained && created) await reprojectDeferred()
+  if (drained && anyRowsCreated(created)) await reprojectDeferred(created)
 
   return { pulled: total, drained }
 }
@@ -308,4 +310,8 @@ export async function readSyncStatus(): Promise<SyncStatus> {
     lastAt: lastAt ? Number(lastAt) : null,
     owner,
   }
+}
+
+export async function waitForRunningSync(): Promise<void> {
+  await running
 }

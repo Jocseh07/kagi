@@ -24,10 +24,19 @@ import { and, eq, inArray, or, sql } from 'drizzle-orm'
 import { chunk } from '@/lib/db/chunk'
 import { db, transact } from '@/lib/db/client'
 import type { DbTransaction } from '@/lib/db/client'
-import { facts } from '@/lib/db/schema'
+import { categories, facts } from '@/lib/db/schema'
 import type { Fact } from '@/lib/db/schema'
-import { isFactKind, isDeviceLocalSetting, supersedes } from './fact-kinds'
-import { applyFacts } from './project'
+import {
+  PRESENT,
+  categoryKey,
+  isFactKind,
+  isDeviceLocalSetting,
+  partsOf,
+  seriesKey,
+  seriesKeyOf,
+  supersedes,
+} from './fact-kinds'
+import { applyFacts, chapterIdByKey, seriesByKey } from './project'
 import { MAX_KEY_BYTES, MAX_PAYLOAD_BYTES } from './protocol'
 import type { SyncFact } from './protocol'
 
@@ -118,18 +127,73 @@ async function acknowledge(rows: readonly Fact[]): Promise<void> {
 export interface ApplyResult {
   /** Facts that were new or newer, and so were written and projected. */
   applied: number
-  /**
-   * Whether a series or a category came into existence in this batch.
-   *
-   * Facts arrive in the server's sequence order, which is when they were last
-   * *written*, not the order the things they describe were created. Unfavourite
-   * and re-favourite a series you have read, and its `lib` fact is rewritten
-   * with a fresh sequence that now sorts after its own history. A device
-   * pulling from scratch would then meet the history first, find no series to
-   * hang it on, and skip it. `reprojectDeferred` is what catches that, and this
-   * is the flag that says it is worth running.
-   */
-  created: boolean
+}
+
+/**
+ * Rows a pull brought into being, by key.
+ *
+ * Facts arrive in the server's sequence order, which is when they were last
+ * *written*, not the order the things they describe were created. Unfavourite
+ * and re-favourite a series you have read, and its `lib` fact is rewritten
+ * with a fresh sequence that now sorts after its own history. A device
+ * pulling from scratch would then meet the history first, find no series to
+ * hang it on, and skip it. `reprojectDeferred` catches that for these rows.
+ *
+ * Only rows that did not exist before count. A newer copy of a series this
+ * device already holds must not re-project its positions: the ledger keeps the
+ * furthest page, and this device may have moved back since.
+ */
+export interface CreatedRows {
+  series: Set<string>
+  categories: Set<string>
+  /** Chapter rows a history fact created as stubs. */
+  chapters: Set<string>
+}
+
+export function noRowsCreated(): CreatedRows {
+  return { series: new Set(), categories: new Set(), chapters: new Set() }
+}
+
+export function anyRowsCreated(created: CreatedRows): boolean {
+  return created.series.size > 0 || created.categories.size > 0 || created.chapters.size > 0
+}
+
+/** Records which winners are about to create a row. Read before projecting. */
+async function noteCreated(
+  tx: DbTransaction,
+  winners: readonly Fact[],
+  created: CreatedRows,
+): Promise<void> {
+  const series = winners.filter((row) => row.kind === 'lib').map((row) => row.key)
+  if (series.length > 0) {
+    const held = await seriesByKey(tx, series)
+    for (const key of series) if (!held.has(key)) created.series.add(key)
+  }
+
+  const named = winners
+    .filter((row) => row.kind === 'cat' && row.state === PRESENT)
+    .map((row) => row.key)
+  if (named.length > 0) {
+    const stored = await tx.select({ name: categories.name }).from(categories)
+    const held = new Set(stored.map((row) => categoryKey(row.name)))
+    for (const key of named) if (!held.has(key)) created.categories.add(key)
+  }
+
+  const stubs = winners
+    .filter((row) => row.kind === 'hist' && row.state === PRESENT)
+    .map((row) => row.key)
+  if (stubs.length > 0) {
+    const held = await chapterIdByKey(tx, stubs)
+    for (const key of stubs) if (!held.has(key)) created.chapters.add(key)
+  }
+}
+
+function dependsOnCreated(row: Fact, created: CreatedRows): boolean {
+  if (row.kind === 'member') {
+    const [category = '', sourceId = '', url = ''] = partsOf(row.key)
+    return created.categories.has(category) || created.series.has(seriesKey(sourceId, url))
+  }
+  return created.series.has(seriesKeyOf(row.key)) || created.chapters.has(row.key)
 }
 
 /**
@@ -141,8 +205,9 @@ export interface ApplyResult {
  */
 export async function applyPulled(
   incoming: readonly SyncFact[],
+  created: CreatedRows = noRowsCreated(),
 ): Promise<ApplyResult> {
-  if (incoming.length === 0) return { applied: 0, created: false }
+  if (incoming.length === 0) return { applied: 0 }
 
   return await transact(async (tx) => {
     const winners: Fact[] = []
@@ -189,7 +254,7 @@ export async function applyPulled(
       }
     }
 
-    if (winners.length === 0) return { applied: 0, created: false }
+    if (winners.length === 0) return { applied: 0 }
 
     for (const group of chunk(winners, CHUNK_SIZE)) {
       await tx
@@ -207,32 +272,32 @@ export async function applyPulled(
         })
     }
 
+    await noteCreated(tx, winners, created)
     await applyFacts(tx, winners)
-    return {
-      applied: winners.length,
-      created: winners.some((row) => row.kind === 'lib' || row.kind === 'cat'),
-    }
+    return { applied: winners.length }
   })
 }
 
 /**
- * Re-projects the facts that depend on a series or a category existing.
+ * Re-projects the facts that hang off rows a pull created.
  *
- * Run once at the end of a pull that brought either into being, and only then,
- * which in practice means the first sync on a device and never again.
- * Projection is idempotent, so running it costs a walk of the ledger; not
- * running it costs a history entry or a category assignment that silently
- * never appears.
+ * Run once at the end of a pull that brought a series, a category or a
+ * chapter stub into being, which in practice means the first sync on a device.
+ * Not running it costs a history entry or a category assignment that silently
+ * never appears. Scoped to those rows: re-projecting a series that was already
+ * here would overwrite where this device scrolled back to with the furthest
+ * page in the ledger.
  *
  * `read` and `pos` are included because `hist` can create a chapter row that
  * did not exist a moment ago, and those two are what mark it.
  */
-export async function reprojectDeferred(): Promise<void> {
+export async function reprojectDeferred(created: CreatedRows): Promise<void> {
   await transact(async (tx) => {
-    const rows = await tx
+    const stored = await tx
       .select()
       .from(facts)
       .where(inArray(facts.kind, ['hist', 'read', 'pos', 'member']))
+    const rows = stored.filter((row) => dependsOnCreated(row, created))
     for (const group of chunk(rows, CHUNK_SIZE)) {
       await applyFacts(tx, group)
     }
