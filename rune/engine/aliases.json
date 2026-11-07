@@ -1,0 +1,7 @@
+{
+  "src/lib/text/document.ts": "rune/engine/adapters/document.ts",
+  "src/lib/adapt/canvas.ts": "rune/engine/adapters/canvas.ts",
+  "src/lib/transport/direct-fetch.ts": "rune/engine/adapters/transport.ts",
+  "src/lib/adapt/settings.ts": "rune/engine/adapters/settings.ts",
+  "src/lib/adapt/journal/capabilities.ts": "rune/engine/adapters/journal-capabilities.ts"
+}

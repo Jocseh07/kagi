@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023", "ESNext.String", "DOM", "DOM.Iterable"],
+    "types": ["bun"],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "allowArbitraryExtensions": true,
+    "jsx": "react-jsx",
+    "paths": { "@/*": ["../../src/*"] }
+  },
+  "include": ["**/*.ts", "../scripts/**/*.ts", "../../src/server/cloudflare.d.ts"]
+}

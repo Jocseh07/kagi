@@ -1,0 +1,13 @@
+{
+  "name": "kagi-rune-engine",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "dependencies": {
+    "@napi-rs/canvas": "1.0.13",
+    "linkedom": "0.18.14"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.4"
+  }
+}
