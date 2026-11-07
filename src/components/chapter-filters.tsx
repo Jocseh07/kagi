@@ -66,7 +66,7 @@ export function ChapterFilters({
           <SlidersHorizontal />
           Filter
           {active > 0 && (
-            <span className="ml-0.5 rounded-full bg-primary px-1.5 text-[0.7rem] font-semibold text-primary-foreground">
+            <span className="ml-0.5 rounded-full bg-primary px-1.5 text-2xs font-semibold text-primary-foreground">
               {active}
             </span>
           )}
@@ -78,7 +78,7 @@ export function ChapterFilters({
           <DialogTitle>Chapters</DialogTitle>
         </DialogHeader>
 
-        <div className="max-h-[60vh] overflow-y-auto">
+        <div className="-m-1 max-h-[60vh] overflow-y-auto p-1">
           {/* Uncontrolled: the dialog unmounts on close, so every open starts
               back at the first section. */}
           <Accordion type="single" collapsible defaultValue="filter">
@@ -179,7 +179,7 @@ function TriStateRow({
     >
       <span
         className={cn(
-          'flex size-4 shrink-0 items-center justify-center rounded-[4px] border',
+          'flex size-4 shrink-0 items-center justify-center rounded-xs border',
           value === 0 && 'border-input text-muted-foreground',
           value === 1 && 'border-primary bg-primary text-primary-foreground',
           value === 2 && 'border-destructive bg-destructive/20 text-destructive',

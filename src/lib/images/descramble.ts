@@ -1,3 +1,4 @@
+import { tileLayout, validateTileGrid } from './tiles'
 import type { Page } from '../sources/types'
 
 export type DescrambleSpec = NonNullable<Page['descramble']>
@@ -38,57 +39,14 @@ export async function descramblePage(
   imageUrl: string,
   spec: DescrambleSpec,
 ): Promise<Blob> {
-  const { cols, rows, tiles } = spec
-
-  if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols < 1 || rows < 1) {
-    throw new Error(`Invalid tile grid: ${cols} x ${rows}.`)
-  }
-  if (tiles.length !== cols * rows) {
-    throw new Error(
-      `Tile map has ${tiles.length} entries but a ${cols} x ${rows} grid ` +
-        `needs ${cols * rows}.`,
-    )
-  }
+  validateTileGrid(spec)
 
   const image = await loadReadableImage(imageUrl)
 
-  // Uniform integer tiles. A permutation is only coherent if every tile is the
-  // same size, so any remainder (< cols px right / < rows px bottom) is dropped.
-  const tileWidth = Math.floor(image.naturalWidth / cols)
-  const tileHeight = Math.floor(image.naturalHeight / rows)
-  if (tileWidth < 1 || tileHeight < 1) {
-    throw new Error(
-      `Image is ${image.naturalWidth} x ${image.naturalHeight}, too small for ` +
-        `a ${cols} x ${rows} tile grid.`,
-    )
-  }
-
-  const surface = createSurface(tileWidth * cols, tileHeight * rows)
-
-  for (let source = 0; source < tiles.length; source++) {
-    const destination = tiles[source]
-    if (
-      !Number.isInteger(destination) ||
-      destination < 0 ||
-      destination >= tiles.length
-    ) {
-      throw new Error(
-        `Tile map entry ${source} points at position ${destination}, which is ` +
-          `outside the ${cols} x ${rows} grid.`,
-      )
-    }
-
-    surface.context.drawImage(
-      image,
-      (source % cols) * tileWidth,
-      Math.floor(source / cols) * tileHeight,
-      tileWidth,
-      tileHeight,
-      (destination % cols) * tileWidth,
-      Math.floor(destination / cols) * tileHeight,
-      tileWidth,
-      tileHeight,
-    )
+  const layout = tileLayout(image.naturalWidth, image.naturalHeight, spec)
+  const surface = createSurface(layout.width, layout.height)
+  for (const tile of layout.tiles) {
+    surface.context.drawImage(image, tile.sx, tile.sy, tile.width, tile.height, tile.dx, tile.dy, tile.width, tile.height)
   }
 
   try {

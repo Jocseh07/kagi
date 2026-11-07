@@ -16,14 +16,16 @@
  */
 
 import { findFont } from '@/lib/fonts/catalog'
+import type { FontOption } from '@/lib/fonts/model'
 
 export const ACTIVE_FONT_KEY = 'kagi:font'
 export const ACTIVE_FONT_CSS_KEY = 'kagi:font-css'
 export const FONT_STYLE_ID = 'app-font'
 
 /** The one rule a chosen font amounts to. Keep in step with index.html. */
-export function fontCss(stack: string): string {
-  return `html:root:root { --font-sans: ${stack}; }`
+export function fontCss(font: FontOption): string {
+  const rule = `html:root:root { --font-sans: ${font.stack}; }`
+  return font.href ? `@import url('${font.href}');\n${rule}` : rule
 }
 
 export function readActiveFontId(): string | null {
@@ -65,7 +67,7 @@ function styleElement(): HTMLStyleElement | null {
 /** Puts a font on screen and remembers it; null hands the app back to the theme. */
 export function applyFont(id: string | null): void {
   const font = findFont(id)
-  const css = font ? fontCss(font.stack) : ''
+  const css = font ? fontCss(font) : ''
   const element = styleElement()
   if (element) element.textContent = css
   persist(font ? font.id : null, css)

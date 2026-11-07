@@ -3,10 +3,13 @@ import { BookCheck, FolderPlus, Trash2, X } from 'lucide-react'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Button } from '@/components/ui/button'
+import { ButtonGroup } from '@/components/ui/button-group'
+import { Spinner } from '@/components/ui/spinner'
 
 export function SelectionBar({
   count,
   busy,
+  markingRead,
   onSetCategories,
   onMarkRead,
   onRemove,
@@ -14,6 +17,7 @@ export function SelectionBar({
 }: {
   count: number
   busy: boolean
+  markingRead: boolean
   onSetCategories(): void
   onMarkRead(): void
   onRemove(): void
@@ -37,35 +41,37 @@ export function SelectionBar({
         </Button>
         <span className="mr-auto text-sm font-medium">{count} selected</span>
 
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={busy}
-          onClick={onSetCategories}
-        >
-          <FolderPlus />
-          Category
-        </Button>
-        <Button variant="outline" size="sm" disabled={busy} onClick={onMarkRead}>
-          <BookCheck />
-          Mark read
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={busy}
-          onClick={() => setConfirmingAt(count)}
-        >
-          <Trash2 />
-          Remove
-        </Button>
+        <ButtonGroup aria-label="Selection actions">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={onSetCategories}
+          >
+            <FolderPlus />
+            Category
+          </Button>
+          <Button variant="outline" size="sm" disabled={busy} onClick={onMarkRead}>
+            {markingRead ? <Spinner size="sm" /> : <BookCheck />}
+            Mark read
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() => setConfirmingAt(count)}
+          >
+            <Trash2 />
+            Remove
+          </Button>
+        </ButtonGroup>
       </div>
 
       <ConfirmDialog
         open={confirmingRemove}
         onOpenChange={(open) => setConfirmingAt(open ? count : null)}
         title={count === 1 ? 'Remove this series?' : `Remove ${count} series?`}
-        description="Reading progress and saved chapters are kept — only the place in your library and any category assignments go."
+        description="Reading progress and saved chapters stay. Category assignments are removed."
         confirmLabel="Remove"
         busyLabel="Removing…"
         busy={busy}

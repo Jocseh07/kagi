@@ -11,6 +11,7 @@ import { upsertChapters, upsertManga } from '@/lib/db/repositories'
 import { unsaveChapter } from '@/lib/offline/save-chapter'
 import { supportsOfflineSave } from '@/lib/offline/types'
 import { notify } from '@/lib/ui/toast'
+import { cn } from '@/lib/utils'
 import type { QueueItem } from '@/lib/download/queue-types'
 import type { SChapter, SManga } from '@/lib/sources/types'
 
@@ -32,6 +33,7 @@ export interface ChapterDownloadButtonProps {
   item: QueueItem | undefined
   /** Fired once a download has actually joined the queue, not on cancel. */
   onQueued?: () => void
+  className?: string
 }
 
 /**
@@ -53,6 +55,7 @@ export const ChapterDownloadButton = memo(function ChapterDownloadButton({
   saved,
   item,
   onQueued,
+  className,
 }: ChapterDownloadButtonProps) {
   const ready = useDatabaseReady()
   const queryClient = useQueryClient()
@@ -114,7 +117,7 @@ export const ChapterDownloadButton = memo(function ChapterDownloadButton({
     <Button
       variant={state.variant}
       size="icon-sm"
-      className="shrink-0 max-sm:size-8"
+      className={cn('shrink-0 max-sm:size-8', className)}
       disabled={busy}
       title={state.title}
       aria-label={state.title}
@@ -145,7 +148,7 @@ function describe(saved: boolean, item: QueueItem | undefined): Presentation {
   if (saved) {
     return {
       icon: <CircleCheck className="fill-primary/15 text-primary" />,
-      title: 'Saved for offline reading — remove the copy',
+      title: 'Saved offline. Tap to remove',
       action: 'remove',
       variant: 'secondary',
     }
@@ -164,15 +167,15 @@ function describe(saved: boolean, item: QueueItem | undefined): Presentation {
           indeterminate={total <= 0}
           stop
           label={
-            total > 0 ? `Downloading — ${percent}` : 'Fetching the page list'
+            total > 0 ? `Downloading ${percent}` : 'Fetching pages'
           }
           className="size-4"
         />
       ),
       title:
         total > 0
-          ? `Downloading — ${percent} — tap to cancel`
-          : 'Fetching the page list — tap to cancel',
+          ? `Downloading ${percent}. Tap to cancel`
+          : 'Fetching pages. Tap to cancel',
       action: 'cancel',
       variant: 'secondary',
     }
@@ -183,8 +186,8 @@ function describe(saved: boolean, item: QueueItem | undefined): Presentation {
       icon: <Clock />,
       title:
         item.state === 'paused'
-          ? 'Paused in the download queue — tap to remove'
-          : 'Waiting in the download queue — tap to remove',
+          ? 'Paused in the queue. Tap to remove'
+          : 'Queued. Tap to remove',
       action: 'cancel',
       variant: 'secondary',
     }
@@ -193,7 +196,7 @@ function describe(saved: boolean, item: QueueItem | undefined): Presentation {
   if (item?.state === 'failed') {
     return {
       icon: <CircleAlert />,
-      title: `${item.lastError ?? 'This download failed'} — tap to try again`,
+      title: `${item.lastError ?? 'Download failed.'} Tap to retry`,
       action: 'retry',
       variant: 'destructive',
     }

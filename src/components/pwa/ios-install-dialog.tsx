@@ -28,6 +28,8 @@ export function IosInstallDialog({ open, onOpenChange }: IosInstallDialogProps) 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
+          {/* The icon that will land on the home screen, so the result is known before the steps. */}
+          <img src="/icon-192.png" alt="" className="size-12 rounded-xl" />
           <DialogTitle>Add Kagi to your home screen</DialogTitle>
           <DialogDescription>
             Kagi then opens like any other app.

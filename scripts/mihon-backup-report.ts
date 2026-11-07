@@ -6,7 +6,7 @@
  * real export — so this runs the *same* parser and mapper the app uses against
  * a real file and reports the result.
  *
- *   pnpm tsx scripts/mihon-backup-report.ts ~/Downloads/app.mihon_….tachibk
+ *   bunx tsx scripts/mihon-backup-report.ts ~/Downloads/app.mihon_….tachibk
  */
 
 import { readFileSync } from 'node:fs'

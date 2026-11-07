@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { FolderPlus } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
+import { ComboboxList } from '@/components/ui/combobox'
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
 import type { Category } from '@/lib/db/schema'
 
 /**
@@ -50,17 +49,18 @@ export function CategoryPicker({
     setChecked(new Set(seed ?? []))
   }
 
-  function toggle(id: string) {
-    setChecked((current) => {
-      const next = new Set(current)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
+  const options = useMemo(
+    () =>
+      categories.map((category) => ({
+        value: category.id,
+        label: category.name,
+      })),
+    [categories],
+  )
+  const selected = useMemo(() => [...checked], [checked])
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={busy ? () => undefined : onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Set categories</DialogTitle>
@@ -70,41 +70,29 @@ export function CategoryPicker({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[60vh] space-y-3 overflow-y-auto">
-          {categories.length === 0 ? (
-            <div className="space-y-3 py-6 text-center">
-              <div className="mx-auto flex size-10 items-center justify-center rounded-full bg-secondary text-muted-foreground">
-                <FolderPlus className="size-5" />
-              </div>
-              <p className="text-sm text-muted-foreground">
-                No categories yet.
-              </p>
-              <Button asChild variant="outline" size="sm">
-                <Link to="/library/categories">Manage categories</Link>
-              </Button>
-            </div>
-          ) : (
-            categories.map((category) => (
-              <div key={category.id} className="flex items-center gap-2.5">
-                <Checkbox
-                  id={`category-${category.id}`}
-                  checked={checked.has(category.id)}
-                  onCheckedChange={() => toggle(category.id)}
-                />
-                <Label
-                  htmlFor={`category-${category.id}`}
-                  className="flex-1 font-normal"
-                >
-                  {category.name}
-                </Label>
-              </div>
-            ))
-          )}
-        </div>
+        {categories.length === 0 ? (
+          <div className="space-y-3 py-6 text-center">
+            <FolderPlus aria-hidden className="mx-auto size-5 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">No categories yet.</p>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/library/categories">Manage categories</Link>
+            </Button>
+          </div>
+        ) : (
+          <ComboboxList
+            multiple
+            listLabel="Categories"
+            options={options}
+            value={selected}
+            onChange={(next) => setChecked(new Set(next))}
+            searchPlaceholder="Search categories"
+            emptyMessage="No category by that name."
+          />
+        )}
 
         {categories.length > 0 && (
           <DialogFooter>
-            <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            <Button variant="ghost" disabled={busy} onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button disabled={busy} onClick={() => onApply([...checked])}>

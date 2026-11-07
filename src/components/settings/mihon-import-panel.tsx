@@ -1,5 +1,5 @@
 /**
- * Importing a Mihon backup, from Settings → Data & storage.
+ * Importing a Mihon backup, from Settings → Data → Backup.
  *
  * Two steps on purpose. Reading the file writes nothing, and what it found is
  * shown in full — including everything that will *not* come across — before the
@@ -12,6 +12,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, FileUp, Library, TriangleAlert } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import { SettingRow } from '@/components/settings/settings-group'
 import { Button } from '@/components/ui/button'
 import {
   Collapsible,
@@ -70,28 +71,29 @@ export function MihonImportPanel({ ready }: { ready: boolean }) {
   const importable = plan?.sources.reduce((n, s) => n + s.series, 0) ?? 0
 
   return (
-    <div className="space-y-3 border-t border-border px-4 py-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h3 className="text-sm font-medium">Import from Mihon</h3>
-        <p className="text-xs text-muted-foreground">
-          Merges — nothing already here is replaced or un-read.
-        </p>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!ready || busy}
-          onClick={() => fileInput.current?.click()}
-        >
-          <FileUp />
-          {read.isPending ? 'Reading…' : 'Choose .tachibk file'}
-        </Button>
-        {fileName && !read.isPending && (
-          <span className="truncate text-xs text-muted-foreground">{fileName}</span>
-        )}
-      </div>
+    <div>
+      <SettingRow
+        inline
+        label="Import from Mihon"
+        hint={
+          fileName && !read.isPending ? (
+            <span className="block truncate font-mono">{fileName}</span>
+          ) : (
+            'Merges a .tachibk backup. Nothing here is replaced or marked unread.'
+          )
+        }
+        control={
+          <Button
+            variant="outline"
+            className="h-10 w-28 md:h-9"
+            disabled={!ready || busy}
+            onClick={() => fileInput.current?.click()}
+          >
+            <FileUp />
+            {read.isPending ? 'Reading…' : 'Choose'}
+          </Button>
+        }
+      />
 
       <input
         ref={fileInput}
@@ -106,6 +108,9 @@ export function MihonImportPanel({ ready }: { ready: boolean }) {
           read.mutate(file)
         }}
       />
+
+      {/* Empty until a file is read, and then hidden by its own emptiness. */}
+      <div className="space-y-3 px-4 pb-4 empty:hidden">
 
       {read.error && <ErrorPanel error={read.error} />}
 
@@ -190,6 +195,7 @@ export function MihonImportPanel({ ready }: { ready: boolean }) {
             : '.'}
         </p>
       )}
+      </div>
     </div>
   )
 }

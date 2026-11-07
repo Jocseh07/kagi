@@ -1,6 +1,7 @@
-import { BlobReader, BlobWriter, ZipWriter, configure } from '@zip.js/zip.js'
+import type { ZipWriter } from '@zip.js/zip.js'
 
 import type { Page } from '../sources/types'
+import { describeError } from '@/lib/ui/describe-error'
 
 export type DownloadResult =
   | { ok: true; blob: Blob; filename: string; pageCount: number }
@@ -65,6 +66,10 @@ export async function downloadChapter(
     }
   }
 
+  // Loaded here rather than at the top: the archiver is 180 kB, and the series
+  // page that imports this module should not pay for it until an export starts.
+  const { BlobReader, BlobWriter, ZipWriter, configure } = await import('@zip.js/zip.js')
+
   // Pages are already-compressed images and deflating them again wins nothing,
   // so entries are stored. Keeping it off the worker pool keeps the bundle
   // free of a second entry point.
@@ -101,7 +106,7 @@ export async function downloadChapter(
     return {
       ok: false,
       reason: 'zip-failed',
-      message: `Could not build the CBZ: ${messageOf(error)}`,
+      message: `Could not build the CBZ: ${describeError(error)}`,
     }
   }
 }
@@ -180,7 +185,7 @@ async function fetchPageBlob(
       host,
       url,
       pageIndex,
-      message: `Page ${pageIndex + 1} could not be read: ${messageOf(error)}`,
+      message: `Page ${pageIndex + 1} could not be read: ${describeError(error)}`,
     }
   }
 }
@@ -247,9 +252,6 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
 function hostOf(url: string): string {
   try {

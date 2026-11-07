@@ -2,10 +2,8 @@ import { useRouter } from '@tanstack/react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ListPlus } from 'lucide-react'
 
-import {
-  MangaActionButton,
-  MangaActionSlot,
-} from '@/components/manga/manga-action-row'
+import { MangaActionButton } from '@/components/manga/manga-action-row'
+import { Spinner } from '@/components/ui/spinner'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -88,33 +86,38 @@ export function QueueUnreadButton({
   if (!supportsOfflineSave()) return null
 
   return (
-    <MangaActionSlot>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <MangaActionButton
-            icon={ListPlus}
-            label={add.isPending ? 'Adding…' : 'Download'}
-            disabled={!ready || candidates.length === 0 || add.isPending}
-            title={
-              candidates.length === 0
-                ? 'Every chapter is read, saved or already queued'
-                : 'Add unread chapters to the download queue'
-            }
-          />
-        </DropdownMenuTrigger>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <MangaActionButton
+          icon={ListPlus}
+          label={add.isPending ? 'Adding…' : 'Download'}
+          disabled={!ready || candidates.length === 0 || add.isPending}
+          title={
+            candidates.length === 0
+              ? 'Every chapter is read, saved or already queued'
+              : 'Add unread chapters to the download queue'
+          }
+        >
+          {add.isPending ? (
+            <>
+              <Spinner className="size-5 sm:size-4" />
+              Adding…
+            </>
+          ) : undefined}
+        </MangaActionButton>
+      </DropdownMenuTrigger>
 
-        <DropdownMenuContent align="start">
-          {BATCH_SIZES.filter((size) => size < candidates.length).map((size) => (
-            <DropdownMenuItem key={size} onSelect={() => add.mutate(size)}>
-              Next {size}
-            </DropdownMenuItem>
-          ))}
-
-          <DropdownMenuItem onSelect={() => add.mutate(candidates.length)}>
-            All unread ({candidates.length})
+      <DropdownMenuContent align="start">
+        {BATCH_SIZES.filter((size) => size < candidates.length).map((size) => (
+          <DropdownMenuItem key={size} onSelect={() => add.mutate(size)}>
+            Next {size}
           </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </MangaActionSlot>
+        ))}
+
+        <DropdownMenuItem onSelect={() => add.mutate(candidates.length)}>
+          All unread ({candidates.length})
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

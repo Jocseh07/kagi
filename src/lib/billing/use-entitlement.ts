@@ -9,8 +9,8 @@
  */
 
 import { useCallback } from 'react'
-import { useAuth } from '@clerk/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useAccountAuth } from '@/lib/sync/use-account-auth'
 
 import { fetchEntitlement, fetchPlan, openCheckout, openPortal } from './client'
 import type { EntitlementStatus } from './client'
@@ -32,7 +32,7 @@ export interface EntitlementView {
 }
 
 export function useEntitlement(): EntitlementView {
-  const { isSignedIn, userId, getToken } = useAuth()
+  const { isSignedIn, userId, getToken } = useAccountAuth()
   const queryClient = useQueryClient()
   const key = billingKeys.entitlement(userId)
 
@@ -59,13 +59,13 @@ export function useEntitlement(): EntitlementView {
 
 /** Starts checkout; the page leaves for Polar on success. */
 export function useCheckout() {
-  const { getToken } = useAuth()
+  const { getToken } = useAccountAuth()
   return useMutation({ mutationFn: () => openCheckout(getToken) })
 }
 
 /** Opens Polar's customer portal; the page leaves on success. */
 export function usePortal() {
-  const { getToken } = useAuth()
+  const { getToken } = useAccountAuth()
   return useMutation({ mutationFn: () => openPortal(getToken) })
 }
 

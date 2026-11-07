@@ -1,4 +1,4 @@
-import { Compass, Download, History, Library, RefreshCw, Settings } from 'lucide-react'
+import { Compass, Download, History, House, Library, RefreshCw, Settings, Sparkles } from 'lucide-react'
 
 import { useIdentity } from '@/lib/profile/identity'
 import type { Identity } from '@/lib/profile/identity'
@@ -8,6 +8,7 @@ import type { Identity } from '@/lib/profile/identity'
  * drift on what the app's destinations are.
  */
 export const NAV = [
+  { to: '/', label: 'Home', icon: House },
   { to: '/library', label: 'Library', icon: Library },
   { to: '/updates', label: 'Updates', icon: RefreshCw },
   { to: '/browse', label: 'Browse', icon: Compass },
@@ -16,19 +17,20 @@ export const NAV = [
 export const ACCOUNT_LINKS = [
   { to: '/history', label: 'History', icon: History },
   { to: '/downloads', label: 'Downloads', icon: Download },
+  { to: '/adapt', label: 'Adaptations', icon: Sparkles },
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const
 
 /**
- * The bottom bar's tabs, following Mihon's own five-tab bar: History is a tab
- * of its own there rather than an account icon, and everything left over — the
- * account, Downloads, incognito — lives at the top of Settings, which is the
- * fifth tab. See components/settings/mobile-hub.tsx.
+ * The bottom bar's tabs. Home leads, and carries History one tap away through
+ * its "Also reading" link; everything left over — the account, Downloads,
+ * incognito — lives at the top of Settings, which is the fifth tab. See
+ * components/settings/mobile-hub.tsx.
  */
 export const BOTTOM_TABS = [
+  { to: '/', label: 'Home', icon: House },
   { to: '/library', label: 'Library', icon: Library },
   { to: '/updates', label: 'Updates', icon: RefreshCw },
-  { to: '/history', label: 'History', icon: History },
   { to: '/browse', label: 'Browse', icon: Compass },
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const

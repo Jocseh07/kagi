@@ -49,7 +49,7 @@ export function describeOutcome(
   if (installAvailable) {
     return 'The browser declined. Installing the app is the dependable way to change that: an installed site is granted persistence.'
   }
-  return 'The browser declined. Chromium decides this silently and grants it once it treats the site as important, which comes with regular use — so try again later, and keep an exported backup until then.'
+  return 'The browser declined. Try again after more use, and keep a backup until then.'
 }
 
 /**

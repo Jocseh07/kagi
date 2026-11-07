@@ -35,8 +35,34 @@ function block(selector: string, vars: ThemeVars): string {
  * needs to restate what actually differs, which is how tweakcn ships them.
  */
 export function tokensToCss(tokens: ThemeTokens): string {
-  const light = { ...(tokens.theme ?? {}), ...tokens.light }
-  return `${block(LIGHT_SELECTOR, light)}${block(DARK_SELECTOR, tokens.dark)}`
+  const light = separateSidebar({ ...(tokens.theme ?? {}), ...tokens.light }, {}, 'light')
+  const dark = separateSidebar(tokens.dark, tokens.light, 'dark')
+  return `${block(LIGHT_SELECTOR, light)}${block(DARK_SELECTOR, dark)}`
+}
+
+const MIN_SIDEBAR_GAP = 0.02
+const SIDEBAR_SHIFT = { light: 'calc(l - 0.025)', dark: 'calc(l + 0.04)' } as const
+
+function oklchLightness(value: string): number | null {
+  const match = /^oklch\(\s*([\d.]+)(%?)/i.exec(value.trim())
+  if (!match) return null
+  const lightness = Number(match[1])
+  return match[2] ? lightness / 100 : lightness
+}
+
+/** Many presets paint the sidebar the same as the page; the inset layout needs them apart. */
+function separateSidebar(vars: ThemeVars, fallback: ThemeVars, mode: 'light' | 'dark'): ThemeVars {
+  const background = vars.background ?? fallback.background
+  const sidebar = vars.sidebar ?? fallback.sidebar
+  if (!background || !sidebar) return vars
+
+  if (sidebar.trim() !== background.trim()) {
+    const a = oklchLightness(background)
+    const b = oklchLightness(sidebar)
+    if (a === null || b === null || Math.abs(a - b) >= MIN_SIDEBAR_GAP) return vars
+  }
+
+  return { ...vars, sidebar: `oklch(from ${background} ${SIDEBAR_SHIFT[mode]} c h)` }
 }
 
 const SWATCH_TOKENS = ['background', 'primary', 'secondary', 'accent', 'destructive'] as const

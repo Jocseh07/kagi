@@ -14,6 +14,8 @@
 import { exec } from '@/lib/db/client'
 import { listSavedChapters } from '@/lib/db/repositories'
 import { SHELL_CACHE, chapterBytes } from '@/lib/offline/types'
+import { adaptationsSize } from '@/lib/adapt/store'
+import { shelfSize } from '@/lib/sources/local-novel/shelf'
 
 import { estimate } from './persist'
 
@@ -21,6 +23,8 @@ export type StorageBucketId =
   | 'saved-chapters'
   | 'library'
   | 'app-shell'
+  | 'imported-books'
+  | 'adaptations'
   | 'other'
 
 export interface StorageBucket {
@@ -169,8 +173,36 @@ async function appShell(): Promise<StorageBucket> {
     label: 'Offline copy of the app',
     detail:
       files === 0
-        ? 'Not stored yet — the app needs the network to open'
+        ? 'Not stored yet. The app needs a connection to open'
         : `${plural(files, 'file')}, so the app opens without a network`,
+    bytes,
+    exact: true,
+  }
+}
+
+// ----------------------------------------------------------- imported books --
+
+/** Novels copied into IndexedDB; see `sources/local-novel/shelf`. */
+async function importedBooks(): Promise<StorageBucket> {
+  const { bytes, count } = await shelfSize()
+  return {
+    id: 'imported-books',
+    label: 'Imported books',
+    detail: count === 0 ? 'Nothing imported yet' : plural(count, 'book'),
+    bytes,
+    exact: true,
+  }
+}
+
+// ------------------------------------------------------------- adaptations --
+
+/** Sheets and pages drawn for manga adaptations; see `adapt/store`. */
+async function adaptations(): Promise<StorageBucket> {
+  const { bytes, count } = await adaptationsSize()
+  return {
+    id: 'adaptations',
+    label: 'Manga adaptations',
+    detail: count === 0 ? 'Nothing adapted yet' : plural(count, 'adaptation'),
     bytes,
     exact: true,
   }
@@ -179,14 +211,16 @@ async function appShell(): Promise<StorageBucket> {
 // ------------------------------------------------------------------ readers --
 
 export async function readStorageBreakdown(): Promise<StorageBreakdown> {
-  const [usage, chapters, db, shell] = await Promise.all([
+  const [usage, chapters, db, shell, books, adapted] = await Promise.all([
     estimate(),
     savedChapters(),
     library(),
     appShell(),
+    importedBooks(),
+    adaptations(),
   ])
 
-  const accounted = chapters.bytes + db.bytes + shell.bytes
+  const accounted = chapters.bytes + db.bytes + shell.bytes + books.bytes + adapted.bytes
   const total = usage?.usage ?? null
 
   const other: StorageBucket = {
@@ -202,5 +236,5 @@ export async function readStorageBreakdown(): Promise<StorageBreakdown> {
     exact: chapters.exact,
   }
 
-  return { total, buckets: [chapters, db, shell, other] }
+  return { total, buckets: [chapters, db, shell, books, adapted, other] }
 }

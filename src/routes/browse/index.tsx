@@ -1,40 +1,90 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
-import { BookText, ChevronRight, CloudOff, HardDrive, Library } from 'lucide-react'
-import { useState } from 'react'
+import {
+  BookText,
+  ChevronRight,
+  CloudOff,
+  HardDrive,
+  Library,
+  Search,
+} from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 import { KindTabs, kindTabOf } from '@/components/kind-tabs'
 import type { KindTab } from '@/components/kind-tabs'
 import { LocalFolderPicker } from '@/components/local/folder-picker'
+import { NovelImporter } from '@/components/local/novel-importer'
 import { PageContainer } from '@/components/page-container'
 import { ContentRatingBadge } from '@/components/sources/content-rating-badge'
+import { GlobalSearchResults } from '@/components/sources/global-search-results'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
+import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useOnline } from '@/lib/offline/use-online'
 import { useHideAdultSources } from '@/lib/sources/adult'
 import { listSources } from '@/lib/sources/registry'
+import { LOCAL_SOURCE_ID } from '@/lib/sources/local'
+import { LOCAL_NOVEL_SOURCE_ID } from '@/lib/sources/local-novel'
 import { isAdultRated, kindOf } from '@/lib/sources/types'
+import { useDebounced } from '@/lib/use-debounced'
 import type { ContentKind, Source } from '@/lib/sources/types'
 
-/** What the page is showing. Absent means every kind. */
+/** What the page is showing. Absent means every kind, and no search. */
 interface BrowseSearch {
   kind?: ContentKind
+  /** A term to put to every visible source at once. */
+  q?: string
 }
 
 export const Route = createFileRoute('/browse/')({
   validateSearch: (search: Record<string, unknown>): BrowseSearch => {
+    const next: BrowseSearch = {}
+
     const kind = kindTabOf(search.kind)
-    return kind ? { kind } : {}
+    if (kind) next.kind = kind
+
+    if (typeof search.q === 'string' && search.q.trim()) next.q = search.q
+
+    return next
   },
   component: BrowseIndex,
+  pendingComponent: BrowsePending,
 })
 
 function BrowseIndex() {
   const online = useOnline()
   const hideAdult = useHideAdultSources()
 
-  const { kind } = Route.useSearch()
+  const { kind, q } = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
+  const query = q ?? ''
+
+  // The same two-way sync the source page uses: the box stays local so typing
+  // is immediate, and the URL catches up on a debounce, replacing rather than
+  // pushing so Back does not walk back through single letters.
+  const [rawQuery, setRawQuery] = useState(query)
+  const debouncedQuery = useDebounced(rawQuery, 400)
+  const syncedQuery = useRef(query)
+
+  useEffect(() => {
+    if (debouncedQuery === syncedQuery.current) return
+    syncedQuery.current = debouncedQuery
+    void navigate({
+      search: (prev) => ({
+        ...prev,
+        q: debouncedQuery.trim() ? debouncedQuery : undefined,
+      }),
+      replace: true,
+    })
+  }, [debouncedQuery, navigate])
+
+  // Back, forward, or a link arriving with a term already on it.
+  useEffect(() => {
+    if (query === syncedQuery.current) return
+    syncedQuery.current = query
+    setRawQuery(query)
+  }, [query])
 
   // Local sources read the device, so nothing rates them; the filter only ever
   // reaches the remote list. Counted rather than silently dropped, because a
@@ -60,8 +110,10 @@ function BrowseIndex() {
   const local = sources.filter((source) => source.isLocal)
 
   function applyKind(next: KindTab) {
+    // The term survives the tab: narrowing to novels mid-search is a way of
+    // asking the same question of fewer sources, not a way of starting over.
     void navigate({
-      search: () => (next === 'all' ? {} : { kind: next }),
+      search: (prev) => ({ q: prev.q, ...(next === 'all' ? {} : { kind: next }) }),
     })
   }
 
@@ -70,10 +122,23 @@ function BrowseIndex() {
       <header>
         <h1 className="text-xl font-semibold tracking-tight">Browse</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {visible.length} source{visible.length === 1 ? '' : 's'} installed.
+          {query
+            ? `Searching ${remote.length} source${remote.length === 1 ? '' : 's'}.`
+            : `${visible.length} source${visible.length === 1 ? '' : 's'} installed.`}
           {hidden > 0 && ` ${hidden} hidden.`}
         </p>
       </header>
+
+      <div className="relative">
+        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={rawQuery}
+          onChange={(event) => setRawQuery(event.target.value)}
+          placeholder="Search all sources"
+          aria-label="Search all sources"
+          className="pl-8"
+        />
+      </div>
 
       <KindTabs
         label="Source type"
@@ -82,7 +147,19 @@ function BrowseIndex() {
         onChange={applyKind}
       />
 
-      {sources.length === 0 ? (
+      {query ? (
+        // Every source a global search reaches is remote, so without a
+        // connection there is nothing to ask.
+        !online ? (
+          <OfflinePanel />
+        ) : remote.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No sources to search on this tab.
+          </p>
+        ) : (
+          <GlobalSearchResults sources={remote} query={query} />
+        )
+      ) : sources.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           {kind === 'novel'
             ? 'No novel sources installed.'
@@ -105,16 +182,7 @@ function BrowseIndex() {
                 ))}
               </ul>
             ) : (
-              <EmptyState
-                icon={CloudOff}
-                title="Sources need a connection"
-                description="Everything you have already downloaded is in your library."
-                action={
-                  <Button asChild size="sm">
-                    <Link to="/library">Go to library</Link>
-                  </Button>
-                }
-              />
+              <OfflinePanel />
             ))}
 
           {local.length > 0 && (
@@ -126,17 +194,51 @@ function BrowseIndex() {
                   </li>
                 ))}
               </ul>
-              {/* Both local sources read the same folder, so the picker sits
-                  under the group rather than on one of the cards — and stays
-                  there on a kind tab, where only one of them is shown. They
-                  are unusable until a folder is chosen, so the choice belongs
-                  where they are found. */}
-              <LocalFolderPicker />
+              {/* The two local sources no longer share a store: comics read a
+                  folder, novels are imported into this browser. Each gets its
+                  own control, and on a kind tab only one of them is shown. */}
+              {local.some((source) => source.id === LOCAL_SOURCE_ID) && (
+                <LocalFolderPicker />
+              )}
+              {local.some((source) => source.id === LOCAL_NOVEL_SOURCE_ID) && (
+                <NovelImporter />
+              )}
             </div>
           )}
         </>
       )}
     </PageContainer>
+  )
+}
+
+/** The route's shape while its chunk loads; the heading is a constant. */
+function BrowsePending() {
+  return (
+    <PageContainer>
+      <h1 className="text-xl font-semibold tracking-tight">Browse</h1>
+      <Skeleton className="h-8 w-full rounded-lg" />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }, (_, index) => (
+          <Skeleton key={index} className="h-16 rounded-lg" />
+        ))}
+      </div>
+    </PageContainer>
+  )
+}
+
+/** What stands in for the remote sources, whether listed or searched. */
+function OfflinePanel() {
+  return (
+    <EmptyState
+      icon={CloudOff}
+      title="Sources need a connection"
+      description="Everything you have already downloaded is in your library."
+      action={
+        <Button asChild size="sm">
+          <Link to="/library">Go to library</Link>
+        </Button>
+      }
+    />
   )
 }
 

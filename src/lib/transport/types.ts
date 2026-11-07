@@ -14,7 +14,7 @@ export interface HttpResponse {
   headers: Headers
   text(): Promise<string>
   json<T>(): Promise<T>
-  blob(): Promise<Blob>
+  arrayBuffer(): Promise<ArrayBuffer>
 }
 
 /**
@@ -40,7 +40,7 @@ export class CorsBlockedError extends Error {
         `The request left the browser but the response could not be read.` +
         (isPickyOrigin(origin)
           ? ` Some sources allow http://localhost but reject IP addresses and ` +
-            `other plain-http origins — try opening the app on ` +
+            `other plain-http origins. Try opening the app on ` +
             `http://localhost instead of ${origin}.`
           : ''),
     )

@@ -33,6 +33,7 @@ import { notify } from '@/lib/ui/toast'
 
 export const Route = createFileRoute('/library/categories')({
   component: CategoriesPage,
+  pendingComponent: CategoriesPending,
 })
 
 function CategoriesPage() {
@@ -147,7 +148,7 @@ function CategoriesPage() {
 
       {status === 'error' ? (
         <ErrorPanel
-          error={error ?? new Error('The library database is unavailable.')}
+          error={error}
         />
       ) : categories.isError ? (
         <ErrorPanel
@@ -306,7 +307,7 @@ function CategoryRow({
         open={confirmingDelete}
         onOpenChange={(open) => (open ? onAskDelete() : onCancelDelete())}
         title={`Delete “${category.name}”?`}
-        description={`The ${count} series in it stay in your library — only the assignment to this category is removed.`}
+        description={`The ${count} series in it stay in your library.`}
         confirmLabel="Delete"
         busyLabel="Deleting…"
         busy={busy}
@@ -323,6 +324,24 @@ function EmptyCategories() {
       title="No categories yet"
       description="Categories become tabs on the library page. Add one above, then assign series to it from the library."
     />
+  )
+}
+
+/** The route's shape while its chunk loads; the header is a constant. */
+function CategoriesPending() {
+  return (
+    <PageContainer>
+      <header className="flex items-center gap-3">
+        <Button asChild variant="ghost" size="icon-sm">
+          <Link to="/library" aria-label="Back to library">
+            <ArrowLeft />
+          </Link>
+        </Button>
+        <h1 className="text-xl font-semibold tracking-tight">Categories</h1>
+      </header>
+      <Skeleton className="h-8 w-full rounded-lg" />
+      <CategoriesSkeleton />
+    </PageContainer>
   )
 }
 

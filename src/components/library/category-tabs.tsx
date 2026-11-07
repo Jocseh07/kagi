@@ -21,7 +21,7 @@ export function CategoryTabs({
     <div
       role="tablist"
       aria-label="Categories"
-      className="bleed-page flex gap-1 overflow-x-auto"
+      className="bleed-page -my-1 flex gap-1 overflow-x-auto py-1"
     >
       <CategoryTab
         label="All"
@@ -60,7 +60,7 @@ function CategoryTab({
       aria-selected={selected}
       onClick={onSelect}
       className={cn(
-        'flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm whitespace-nowrap transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
+        'relative flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm whitespace-nowrap transition-colors outline-none after:absolute after:-inset-y-1 after:inset-x-0 pointer-fine:after:hidden focus-visible:ring-3 focus-visible:ring-ring/50',
         selected
           ? 'bg-secondary text-foreground'
           : 'text-muted-foreground hover:text-foreground',

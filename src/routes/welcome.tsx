@@ -28,7 +28,8 @@ import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { SignInButton } from '@clerk/react'
 import { ArrowLeft, ArrowRight, Check } from 'lucide-react'
 
-import { DEFAULT_ACCENT } from '@/components/profile/avatar-accent'
+import { KagiMark } from '@/components/kagi-mark'
+import { DEFAULT_ACCENT } from '@/lib/profile/avatar-accent'
 import { ProfileFields, type ProfileDraft } from '@/components/profile/profile-fields'
 import { ModeChooser } from '@/components/theme/mode-chooser'
 import { ThemePicker } from '@/components/theme/theme-picker'
@@ -49,21 +50,14 @@ export const Route = createFileRoute('/welcome')({
     // Reachable on purpose from Settings → Run welcome again, which clears
     // both the profile and the onboarded marker first; with either present
     // there is nothing to ask.
-    if (hasProfile() || hasOnboarded()) throw redirect({ to: '/browse' })
+    if (hasProfile() || hasOnboarded()) throw redirect({ to: '/' })
   },
   component: Welcome,
 })
 
 const STEPS = ['Profile', 'Appearance'] as const
 
-/**
- * How long to wait on Clerk before showing the welcome regardless.
- *
- * A first run with no network never resolves a session, and a spinner that
- * never ends is worse than a welcome shown to someone who turns out to be
- * signed in — the effect below still corrects that case the moment the answer
- * arrives.
- */
+/** Ceiling on waiting for Clerk, so a session that never resolves still gets the form. */
 const ACCOUNT_WAIT_MS = 2500
 
 function Welcome() {
@@ -87,7 +81,7 @@ function Welcome() {
   useEffect(() => {
     if (!signedIn) return
     markOnboarded()
-    void navigate({ to: '/library', replace: true })
+    void navigate({ to: '/', replace: true })
   }, [signedIn, navigate])
 
   useEffect(() => {
@@ -107,28 +101,15 @@ function Welcome() {
     void navigate({ to: '/browse' })
   }
 
-  // After the hooks above, so the hook order does not change when the answer
-  // arrives. `LoadingScreen` stays blank for its first 150ms, so the common
-  // case — Clerk resolving quickly — shows no spinner at all.
-  //
-  // Held while signed in as well, and not only while the answer is pending:
-  // the redirect above runs in an effect, which React flushes *after* the
-  // browser has painted, so releasing the gate the instant Clerk answers puts
-  // a full frame of welcome on screen on the way to the library. Waiting here
-  // means a signed-in user only ever sees the spinner.
-  //
-  // Offline there is no answer coming at all — Clerk's script cannot load —
-  // so the wait is skipped rather than served as two and a half seconds of
-  // spinner on a first run with no connection.
-  if (signedIn || (!accountReady && !waitedLongEnough && online)) {
-    return <LoadingScreen />
-  }
+  // The redirect above runs after paint, so the form waits for Clerk's answer; offline none is coming.
+  if (signedIn || (!accountReady && !waitedLongEnough && online)) return <LoadingScreen />
 
   return (
     <div className="flex min-h-full items-center justify-center px-page py-8 sm:py-12">
-      <div className="flex w-full max-w-xl flex-col gap-6">
+      <div className="flex w-full max-w-xl flex-col gap-page">
         <header>
-          <p className="font-brand text-xs tracking-wide text-muted-foreground uppercase">
+          <p className="font-brand flex items-center gap-2 text-sm font-semibold tracking-tight">
+            <KagiMark className="size-5 text-foreground" />
             Kagi
           </p>
           <h1 className="mt-2 max-w-[24ch] text-3xl font-semibold tracking-tight text-balance">
@@ -136,7 +117,7 @@ function Welcome() {
           </h1>
           <p className="mt-2 max-w-[56ch] text-base text-pretty text-muted-foreground sm:text-sm">
             {step === 0
-              ? 'Your library, your reader, your device. Set up a profile so the app knows who to greet — it never leaves this browser.'
+              ? 'Set up a profile. It never leaves this browser.'
               : 'Pick how it should look. Every theme carries a light and a dark palette, and the whole app changes the moment you choose.'}
           </p>
         </header>
@@ -144,7 +125,7 @@ function Welcome() {
         <StepIndicator current={step} />
 
         {step === 0 ? (
-          <ProfileStep value={draft} onChange={setDraft} />
+          <ProfileStep value={draft} onChange={setDraft} accountReady={accountReady} online={online} />
         ) : (
           <AppearanceStep />
         )}
@@ -205,9 +186,13 @@ function StepIndicator({ current }: { current: number }) {
 function ProfileStep({
   value,
   onChange,
+  accountReady,
+  online,
 }: {
   value: ProfileDraft
   onChange: (next: ProfileDraft) => void
+  accountReady: boolean
+  online: boolean
 }) {
   return (
     <section className="rounded-lg border border-border bg-card p-4">
@@ -219,17 +204,19 @@ function ProfileStep({
         <div className="mt-4 border-t border-border pt-4">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-xs text-muted-foreground uppercase">or</span>
-            <SignInButton mode="modal">
-              <Button variant="outline" size="sm">
-                Sign in
-              </Button>
-            </SignInButton>
+            {accountReady ? (
+              <SignInButton mode="modal">
+                <Button variant="outline" size="sm">
+                  Sign in
+                </Button>
+              </SignInButton>
+            ) : online ? (
+              <Skeleton className="h-7 w-16 rounded-lg" />
+            ) : null}
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            An account is optional — the app is free forever and everything is
-            saved on this device either way. Signing in skips setup and takes
-            you straight to your library; the Sync plan for keeping devices in
-            step can be added later.
+            Optional. Everything stays on this device either way. Signing in
+            skips setup.
           </p>
         </div>
       ) : null}
@@ -261,7 +248,7 @@ function AppearanceStep() {
         {/* The catalog is a quarter of a megabyte and loads after the tab
             opens, so the grid grows under the pointer; the skeletons hold the
             space rather than letting the Finish button jump. */}
-        <div className="max-h-72 overflow-y-auto pr-1">
+        <div className="-m-1 max-h-72 overflow-y-auto p-1 pr-2">
           <ThemePicker
             presets={themes.builtIn}
             activeId={themes.activeId}
@@ -271,7 +258,7 @@ function AppearanceStep() {
           {themes.loading ? (
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
               {Array.from({ length: 6 }, (_, index) => (
-                <Skeleton key={index} className="h-[70px] rounded-lg" />
+                <Skeleton key={index} className="h-17.5 rounded-lg" />
               ))}
             </div>
           ) : null}

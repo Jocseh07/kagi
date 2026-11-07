@@ -147,8 +147,8 @@ interface Presentation {
 function describe(state: ExportState): Presentation {
   if (state.phase === 'listing') {
     return {
-      icon: <DownloadRing value={0} max={1} indeterminate stop label="Fetching the page list" className="size-4" />,
-      title: 'Fetching the page list — tap to cancel',
+      icon: <DownloadRing value={0} max={1} indeterminate stop label="Fetching pages" className="size-4" />,
+      title: 'Fetching pages. Tap to cancel',
       variant: 'secondary',
     }
   }
@@ -164,13 +164,13 @@ function describe(state: ExportState): Presentation {
           max={state.total}
           indeterminate={!counted}
           stop
-          label={counted ? `Packing — ${percent}` : 'Packing'}
+          label={counted ? `Packing ${percent}` : 'Packing'}
           className="size-4"
         />
       ),
       title: counted
-        ? `Packing — ${percent} — tap to cancel`
-        : 'Packing — tap to cancel',
+        ? `Packing ${percent}. Tap to cancel`
+        : 'Packing. Tap to cancel',
       variant: 'secondary',
     }
   }
@@ -186,7 +186,7 @@ function describe(state: ExportState): Presentation {
   if (state.phase === 'failed') {
     return {
       icon: <CircleAlert />,
-      title: `${state.title}: ${state.detail} — tap to try again`,
+      title: `${state.title}: ${state.detail} Tap to retry`,
       variant: 'destructive',
     }
   }

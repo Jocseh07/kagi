@@ -10,8 +10,8 @@ interface VirtualListProps {
   scrollMargin: number
   className?: string
   /** Set both together to keep list semantics the markup used to carry. */
-  role?: 'list'
-  itemRole?: 'listitem'
+  role?: 'list' | 'presentation'
+  itemRole?: 'listitem' | 'presentation'
   /**
    * Whether rows are measured after mount. Leave on for rows whose height
    * depends on content; turn off when every row is drawn at a fixed height

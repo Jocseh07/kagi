@@ -1,7 +1,7 @@
 /**
  * Exercises the AsuraScans source against the live API, outside a browser.
  *
- * Run: pnpm exec tsx scripts/smoke-asura.ts
+ * Run: bunx tsx scripts/smoke-asura.ts
  *
  * Node has no DOMParser, which the source uses only to strip HTML out of
  * descriptions, so a minimal stand-in is installed before importing it.

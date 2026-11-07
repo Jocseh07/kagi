@@ -1,52 +1,86 @@
-import { useState } from 'react'
-import { ChevronsUpDown } from 'lucide-react'
+import { X } from 'lucide-react'
 
-import { FontList } from '@/components/fonts/font-list'
+import { AddFontDialog } from '@/components/fonts/add-font-dialog'
+import { useFontOptions } from '@/components/fonts/font-options'
+import { SettingRow } from '@/components/settings/settings-group'
 import { Button } from '@/components/ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { findFont } from '@/lib/fonts/catalog'
+import { Combobox } from '@/components/ui/combobox'
+import type { FontOption } from '@/lib/fonts/model'
+import { removeCustomFont, restoreCustomFont, useCustomFonts } from '@/lib/fonts/custom'
 import { useFont } from '@/lib/fonts/use-font'
+import { notify } from '@/lib/ui/toast'
 
 const THEME_DEFAULT_LABEL = 'Theme default'
 
 /**
- * The app's font, as a combobox.
+ * The app's font, the button that adds one from Google Fonts, and a row per
+ * added font. One `useFont` serves all three so a removal clears the picker.
  *
- * Only the trigger and the popover live here; the list itself is shared with
- * the novel reader, which shows the same catalog against a different setting.
- * The popover stays open across selections — see FontList.
+ * The panel stays open across picks: what is being judged is the text behind
+ * it, and closing after every try would make comparing two faces a matter of
+ * memory.
  */
-export function FontPicker() {
+export function FontSettings() {
   const [fontId, setFont] = useFont()
-  const [open, setOpen] = useState(false)
+  const options = useFontOptions(THEME_DEFAULT_LABEL)
+  const custom = useCustomFonts()
 
-  const active = findFont(fontId)
+  function remove(font: FontOption, index: number) {
+    const wasActive = fontId === font.id
+    removeCustomFont(font.id)
+    if (wasActive) setFont(null)
+    notify.success(`Removed ${font.name}`, {
+      id: `font-removed-${font.id}`,
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          restoreCustomFont(font, index)
+          if (wasActive) setFont(font.id)
+        },
+      },
+    })
+  }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          aria-label="Font"
-          className="w-64 justify-between"
-        >
-          <span className="truncate" style={{ fontFamily: active?.stack }}>
-            {active?.name ?? THEME_DEFAULT_LABEL}
-          </span>
-          <ChevronsUpDown aria-hidden className="size-4 shrink-0 opacity-60" />
-        </Button>
-      </PopoverTrigger>
+    <>
+      <SettingRow
+        label="Font"
+        hint="Overrides the theme's own font."
+        control={
+          <div className="flex w-full items-center gap-2 @md:w-auto">
+            <Combobox
+              label="Font"
+              value={fontId ?? ''}
+              onChange={(id) => setFont(id === '' ? null : id)}
+              options={options}
+              searchPlaceholder="Search fonts"
+              emptyMessage="No font by that name."
+              closeOnSelect={false}
+              align="start"
+              className="min-w-0 flex-1 @md:w-48 @md:flex-none"
+            />
+            <AddFontDialog onAdd={(font) => setFont(font.id)} />
+          </div>
+        }
+      />
 
-      <PopoverContent align="start" className="w-72 p-1">
-        <FontList
-          autoFocus
-          value={fontId ?? ''}
-          onChange={(id) => setFont(id === '' ? null : id)}
-          defaultLabel={THEME_DEFAULT_LABEL}
+      {custom.map((font, index) => (
+        <SettingRow
+          key={font.id}
+          inline
+          label={<span style={{ fontFamily: font.stack }}>{font.name}</span>}
+          control={
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Remove ${font.name}`}
+              onClick={() => remove(font, index)}
+            >
+              <X />
+            </Button>
+          }
         />
-      </PopoverContent>
-    </Popover>
+      ))}
+    </>
   )
 }

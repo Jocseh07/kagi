@@ -9,7 +9,7 @@
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ACCENTS, accentClass } from '@/components/profile/avatar-accent'
+import { ACCENTS, accentClass } from '@/lib/profile/avatar-accent'
 import { initialsOf } from '@/lib/profile/store'
 import { cn } from '@/lib/utils'
 
@@ -104,8 +104,8 @@ export function ProfileFields({ value, onChange, layout = 'inline' }: ProfileFie
           onChange={(event) => onChange({ ...value, email: event.target.value })}
         />
         <p className="text-xs text-muted-foreground">
-          Shown beside your name. Nothing is sent anywhere — this browser is the
-          only place it is kept, separate from any account you sign in with.
+          Shown beside your name. It stays in this browser, separate from any
+          account you sign in with.
         </p>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import {
   ArrowDownWideNarrow,
   ArrowUpNarrowWide,
@@ -19,13 +19,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Combobox } from '@/components/ui/combobox'
 import {
   Dialog,
   DialogContent,
@@ -73,7 +67,7 @@ export function FilterDialog({
           <SlidersHorizontal />
           Filters
           {activeCount > 0 && (
-            <span className="ml-0.5 rounded-full bg-primary px-1.5 text-[0.7rem] font-semibold text-primary-foreground">
+            <span className="ml-0.5 rounded-full bg-primary px-1.5 text-2xs font-semibold text-primary-foreground">
               {activeCount}
             </span>
           )}
@@ -85,7 +79,7 @@ export function FilterDialog({
           <DialogTitle>Filters</DialogTitle>
         </DialogHeader>
 
-        <div className="max-h-[60vh] overflow-y-auto">
+        <div className="-m-1 max-h-[60vh] overflow-y-auto p-1">
           {loading ? (
             <FilterSkeleton />
           ) : draft.length === 0 ? (
@@ -134,6 +128,17 @@ function FilterControl({
   onChange: (next: Filter) => void
 }) {
   const id = useId()
+  // Hoisted out of the switch: a hook cannot live inside a case.
+  const options = useMemo(
+    () =>
+      'values' in filter
+        ? filter.values.map((label, index) => ({
+            value: String(index),
+            label,
+          }))
+        : [],
+    [filter],
+  )
 
   switch (filter.type) {
     case 'header':
@@ -164,23 +169,15 @@ function FilterControl({
       return (
         <div className="space-y-1.5">
           <Label htmlFor={id}>{filter.name}</Label>
-          <Select
+          <Combobox
+            id={id}
+            label={filter.name}
+            options={options}
             value={String(filter.state)}
-            onValueChange={(value) =>
-              onChange({ ...filter, state: Number(value) })
-            }
-          >
-            <SelectTrigger id={id} className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {filter.values.map((value, index) => (
-                <SelectItem key={value} value={String(index)}>
-                  {value}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            onChange={(next) => onChange({ ...filter, state: Number(next) })}
+            searchPlaceholder="Search options"
+            className="w-full"
+          />
         </div>
       )
 
@@ -222,26 +219,20 @@ function FilterControl({
         <div className="space-y-1.5">
           <Label htmlFor={id}>{filter.name}</Label>
           <div className="flex gap-2">
-            <Select
+            <Combobox
+              id={id}
+              label={filter.name}
+              options={options}
               value={String(filter.state.index)}
-              onValueChange={(value) =>
+              onChange={(next) =>
                 onChange({
                   ...filter,
-                  state: { ...filter.state, index: Number(value) },
+                  state: { ...filter.state, index: Number(next) },
                 })
               }
-            >
-              <SelectTrigger id={id} className="flex-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {filter.values.map((value, index) => (
-                  <SelectItem key={value} value={String(index)}>
-                    {value}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              searchPlaceholder="Search options"
+              className="flex-1"
+            />
             <Button
               variant="outline"
               size="icon"
@@ -291,7 +282,7 @@ function TristateControl({
     >
       <span
         className={cn(
-          'flex size-4 shrink-0 items-center justify-center rounded-[4px] border',
+          'flex size-4 shrink-0 items-center justify-center rounded-xs border',
           filter.state === 0 && 'border-input text-muted-foreground',
           filter.state === 1 && 'border-primary bg-primary text-primary-foreground',
           filter.state === 2 &&

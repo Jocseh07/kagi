@@ -21,7 +21,7 @@ export function IncognitoBanner() {
         <p className="min-w-0 truncate font-medium">
           Incognito
           <span className="font-normal text-muted-foreground">
-            {' — nothing is saved. History and reading progress are not recorded.'}
+            {'. History and reading progress are not saved.'}
           </span>
         </p>
         <Button

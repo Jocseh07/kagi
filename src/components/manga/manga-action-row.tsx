@@ -5,36 +5,12 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 /**
- * The strip of primary actions under the series header.
+ * One segment of the series actions, which sit together in a `ButtonGroup`.
  *
- * Mihon gives every action the same shape — a mark above a short label — so
- * the row reads as one control rather than a scatter of differently weighted
- * buttons, and the active ones are told apart by colour alone. Each action is
- * a column so it can carry a status line underneath without disturbing its
- * neighbours.
+ * Mihon gives every action the same shape, a mark above a short label, so the
+ * group reads as one control and the active ones are told apart by colour.
+ * Each segment is a direct child of the group so its corners join.
  */
-export function MangaActionRow({ className, ...props }: ComponentProps<'div'>) {
-  return (
-    <div
-      className={cn(
-        'flex items-start gap-1 border-y border-border py-1 md:border-y-0 md:py-0',
-        className,
-      )}
-      {...props}
-    />
-  )
-}
-
-/** One action's column: the button, then anything it has to report. */
-export function MangaActionSlot({ className, ...props }: ComponentProps<'div'>) {
-  return (
-    <div
-      className={cn('flex min-w-0 flex-1 basis-0 flex-col items-center gap-1', className)}
-      {...props}
-    />
-  )
-}
-
 export function MangaActionButton({
   icon: Icon,
   iconClassName,
@@ -52,9 +28,9 @@ export function MangaActionButton({
 }) {
   return (
     <Button
-      variant="ghost"
+      variant="outline"
       className={cn(
-        'h-auto w-full flex-col gap-1 py-2 text-center text-xs leading-4 font-normal whitespace-normal',
+        'h-auto min-w-0 flex-1 basis-0 flex-col gap-1 px-1 py-2 text-center text-xs leading-4 font-normal whitespace-normal',
         active ? 'text-primary' : 'text-muted-foreground',
         className,
       )}
@@ -69,23 +45,5 @@ export function MangaActionButton({
         </>
       )}
     </Button>
-  )
-}
-
-/** A status line under an action, sized to sit inside its column. */
-export function MangaActionNote({
-  tone = 'muted',
-  className,
-  ...props
-}: ComponentProps<'p'> & { tone?: 'muted' | 'destructive' }) {
-  return (
-    <p
-      className={cn(
-        'text-center text-xs',
-        tone === 'destructive' ? 'text-destructive' : 'text-muted-foreground',
-        className,
-      )}
-      {...props}
-    />
   )
 }

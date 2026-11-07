@@ -1,9 +1,9 @@
 @import "tailwindcss";
+/* Clerk's shadcn theme lives in a package file, so Tailwind has to be pointed
+   at it to emit the classes it names. It only adds classes, it sets no tokens. */
+@import "@clerk/ui/themes/shadcn.css";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-/* Only the tabs sheet. The full `@heroui/styles` sets --background, --muted,
-   --accent and friends on :root and would overwrite the theme picker. */
-@import "@heroui/styles/components/tabs.css" layer(components);
 @import "./fonts.css";
 
 /*
@@ -15,18 +15,24 @@
  * utility built from them.
  */
 @theme {
-  /* The reader's fullscreen letterbox: hardware masking, not a theme surface,
-     so it is fixed at true black like the theme-color the reader sets. */
+  /* The reader's idle veil and its `black` reader background: hardware-like
+     masking, not a theme surface, so it is fixed at true black like the
+     theme-color the reader sets. */
   --color-letterbox: oklch(0 0 0);
   /* How fast the idle reader fades down and back. */
   --duration-dim: 400ms;
-  /* The settings tabs' pill sliding to the chosen tab. */
-  --duration-segment: 250ms;
-  /* Names HeroUI's tabs sheet expects; values it gets. */
-  --ease-smooth: ease;
-  --ease-out-fluid: cubic-bezier(0.23, 1, 0.32, 1);
-  --cursor-interactive: pointer;
+  /* Dropdown panels: fixed so a panel never resizes as its list is filtered. */
+  --container-dropdown: 18rem;
+  --container-dropdown-narrow: 10rem;
+  --height-dropdown-list: 18rem;
+  /* Badge counts and the bottom nav's labels. */
+  --text-2xs: 0.7rem;
+  /* Series titles under a cover tile. */
+  --text-tile: 0.8rem;
 }
+
+/* Viewports tall enough to keep the series rail pinned while its chapters scroll. */
+@custom-variant tall (@media (min-height: 52rem));
 
 @theme inline {
   --color-bg: var(--bg);
@@ -34,48 +40,6 @@
   --color-surface-2: var(--surface-2);
   --color-fg: var(--fg);
   --color-fg-muted: var(--fg-muted);
-  /* HeroUI tabs bridge: the track and the raised pill, on the app's tokens. */
-  --color-default: var(--muted);
-  --color-segment: var(--card);
-  --color-segment-foreground: var(--card-foreground);
-}
-
-/* Utilities HeroUI's tabs sheet applies, redone on this app's tokens. */
-@utility status-focused {
-  @apply ring-2 ring-ring/50 outline-none;
-}
-@utility status-disabled {
-  @apply pointer-events-none opacity-50;
-}
-@utility no-highlight {
-  -webkit-tap-highlight-color: transparent;
-}
-@utility shadow-surface {
-  @apply shadow-sm;
-}
-
-@layer components {
-  /* HeroUI reads `text-muted` as a text color; here `muted` is a surface. */
-  .tabs__tab {
-    @apply text-muted-foreground;
-  }
-  .tabs__indicator {
-    transition-duration: var(--duration-segment);
-    /* Tailwind also reads `shadow-surface` as a shadow colour, which would
-       paint the pill's shadow in the pill's own colour. Back to the default. */
-    --tw-shadow-color: initial;
-  }
-  /* HeroUI's tab strip scrolls inside a ScrollShadow whose overflow lives in
-     the scroll-shadow sheet, and only the tabs sheet is imported above.
-     Without this the strip cannot scroll and the tabs past the edge of a phone
-     are unreachable. */
-  .tabs__list-container__scroller[data-orientation="horizontal"] {
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .tabs__list-container__scroller::-webkit-scrollbar {
-    display: none;
-  }
 }
 
 html, body, #root { height: 100%; }
@@ -119,6 +83,7 @@ body {
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --radius-xs: calc(var(--radius) * 0.35);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -256,15 +221,6 @@ body {
      with the page from md up. */
   .bleed-page {
     @apply -mx-2 px-2 md:mx-0 md:px-0;
-  }
-
-  /* The fullscreen reader's top and bottom bands: a fixed strip plus whatever
-     the platform reserves for its own indicators on that edge. */
-  .reader-letterbox-top {
-    height: calc(env(safe-area-inset-top) + --spacing(6));
-  }
-  .reader-letterbox-bottom {
-    height: calc(env(safe-area-inset-bottom) + --spacing(6));
   }
 }
 

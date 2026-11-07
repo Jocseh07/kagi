@@ -9,6 +9,8 @@
 
 import { useEffect, useState } from 'react'
 
+import { RefreshCw } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 
 type Apply = () => Promise<void>
@@ -36,26 +38,35 @@ export function UpdatePrompt() {
 
   if (!apply) return null
 
+  // A bar in the layout's flow, like the offline and incognito ones, so it
+  // never sits over the bottom nav or a page's own controls.
   return (
-    <div
-      role="status"
-      // Above the reader, which is a fixed z-50 surface.
-      className="fixed right-4 bottom-4 z-[60] flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2 shadow-lg"
-    >
-      <span className="text-sm">New version available</span>
-      <Button
-        size="sm"
-        disabled={applying}
-        onClick={() => {
-          setApplying(true)
-          void apply().catch(() => setApplying(false))
-        }}
-      >
-        {applying ? 'Reloading…' : 'Reload'}
-      </Button>
-      <Button variant="ghost" size="sm" onClick={() => setApply(null)}>
-        Later
-      </Button>
+    <div role="status" className="shrink-0 border-b border-border bg-secondary">
+      <div className="page-width flex h-9 items-center gap-2 px-page text-xs">
+        <RefreshCw aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+        <p className="min-w-0 truncate font-medium">New version available</p>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <Button
+            size="sm"
+            className="h-6 px-2 text-xs"
+            disabled={applying}
+            onClick={() => {
+              setApplying(true)
+              void apply().catch(() => setApplying(false))
+            }}
+          >
+            {applying ? 'Reloading…' : 'Reload'}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => setApply(null)}
+          >
+            Later
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }

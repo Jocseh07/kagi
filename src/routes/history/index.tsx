@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { History, Trash2 } from 'lucide-react'
@@ -41,14 +41,56 @@ function HistoryPage() {
   const invalidate = () =>
     void queryClient.invalidateQueries({ queryKey: dbKeys.history })
 
-  const remove = useMutation({
-    mutationFn: deleteHistoryEntry,
-    onSuccess: () => {
-      notify.success('Removed from history')
-      invalidate()
+  /**
+   * A removed row leaves at once and the delete waits for its toast to close,
+   * so Undo only has to show the row again. Each id maps to whether it was
+   * undone; a removal still pending when the page goes is committed then.
+   */
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set())
+  const pending = useRef(new Map<string, boolean>())
+
+  const commit = useCallback(
+    (id: string) => {
+      if (!pending.current.has(id)) return
+      const undone = pending.current.get(id)
+      pending.current.delete(id)
+      if (undone) return
+      deleteHistoryEntry(id).then(
+        () => void queryClient.invalidateQueries({ queryKey: dbKeys.history }),
+        (error: unknown) => {
+          notify.error('Could not remove that entry', error)
+          setHidden((current) => without(current, id))
+        },
+      )
     },
-    onError: (error) => notify.error('Could not remove that entry', error),
-  })
+    [queryClient],
+  )
+
+  useEffect(
+    () => () => {
+      for (const id of [...pending.current.keys()]) {
+        notify.dismiss(`history:${id}`)
+        commit(id)
+      }
+    },
+    [commit],
+  )
+
+  function removeEntry(id: string) {
+    pending.current.set(id, false)
+    setHidden((current) => new Set(current).add(id))
+    notify.success('Removed from history', {
+      id: `history:${id}`,
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          pending.current.set(id, true)
+          setHidden((current) => without(current, id))
+        },
+      },
+      onClose: () => commit(id),
+    })
+  }
 
   const clear = useMutation({
     mutationFn: clearHistory,
@@ -60,7 +102,10 @@ function HistoryPage() {
     },
   })
 
-  const items = entries.data ?? []
+  const items = useMemo(
+    () => (entries.data ?? []).filter((item) => !hidden.has(item.id)),
+    [entries.data, hidden],
+  )
 
   return (
     <PageContainer>
@@ -83,7 +128,7 @@ function HistoryPage() {
         open={confirmingClear}
         onOpenChange={setConfirmingClear}
         title="Clear your reading history?"
-        description={`All ${items.length} entries go. Your library and reading progress are untouched — only the record of what you opened and when.`}
+        description={`All ${items.length} entries go. Your library and reading progress stay.`}
         confirmLabel="Clear all"
         busyLabel="Clearing…"
         busy={clear.isPending}
@@ -92,7 +137,7 @@ function HistoryPage() {
 
       {status === 'error' ? (
         <ErrorPanel
-          error={error ?? new Error('The library database is unavailable.')}
+          error={error}
         />
       ) : entries.isError ? (
         <ErrorPanel error={entries.error} onRetry={() => void entries.refetch()} />
@@ -101,11 +146,7 @@ function HistoryPage() {
       ) : items.length === 0 ? (
         <EmptyHistory />
       ) : (
-        <HistoryList
-          items={items}
-          busyId={remove.isPending ? remove.variables : null}
-          onDelete={(id) => remove.mutate(id)}
-        />
+        <HistoryList items={items} onDelete={removeEntry} />
       )}
     </PageContainer>
   )
@@ -119,11 +160,9 @@ function HistoryPage() {
  */
 function HistoryList({
   items,
-  busyId,
   onDelete,
 }: {
   items: readonly HistoryItem[]
-  busyId: string | null
   onDelete(id: string): void
 }) {
   const { listRef, virtualizer, scrollMargin } = usePageVirtualizer({
@@ -147,7 +186,6 @@ function HistoryList({
         return (
           <HistoryRow
             item={item}
-            busy={busyId === item.id}
             onDelete={() => onDelete(item.id)}
             className={index < items.length - 1 ? 'border-b border-border' : undefined}
           />
@@ -162,12 +200,10 @@ const HISTORY_ROW_HEIGHT = 80
 
 function HistoryRow({
   item,
-  busy,
   onDelete,
   className,
 }: {
   item: HistoryItem
-  busy: boolean
   onDelete(): void
   className?: string
 }) {
@@ -198,7 +234,7 @@ function HistoryRow({
         className="w-10 shrink-0"
         aria-label={item.mangaTitle}
       >
-        <MangaCover url={item.thumbnailUrl ?? undefined} title={item.mangaTitle} />
+        <MangaCover url={item.thumbnailUrl ?? undefined} />
       </Link>
 
       <Link
@@ -219,7 +255,6 @@ function HistoryRow({
         variant="ghost"
         size="sm"
         className="shrink-0"
-        disabled={busy}
         aria-label={`Remove ${item.mangaTitle} from history`}
         onClick={onDelete}
       >
@@ -227,6 +262,12 @@ function HistoryRow({
       </Button>
     </div>
   )
+}
+
+function without(set: ReadonlySet<string>, id: string): ReadonlySet<string> {
+  const next = new Set(set)
+  next.delete(id)
+  return next
 }
 
 /** Only meaningful mid-chapter; a finished chapter reads as read. */
@@ -269,9 +310,12 @@ function HistoryPending() {
 
 function HistorySkeleton() {
   return (
-    <div className="space-y-2">
+    <div
+      aria-busy="true"
+      className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card"
+    >
       {Array.from({ length: 6 }, (_, index) => (
-        <div key={index} className="flex items-center gap-3">
+        <div key={index} className="flex items-center gap-3 px-3 py-2.5">
           <Skeleton className="aspect-[2/3] w-10 shrink-0 rounded-lg" />
           <div className="flex-1 space-y-1.5">
             <Skeleton className="h-4 w-1/2" />

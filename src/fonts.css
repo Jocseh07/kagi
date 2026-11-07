@@ -16,6 +16,16 @@
  * node_modules/<pkg>/index.css for the real weight range, and copy a block.
  */
 
+/* Comic Neue: speech lettering on adapted comic pages (lib/adapt/compose.ts), not a theme font */
+
+@font-face {
+  font-family: 'Comic Neue';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url('@fontsource/comic-neue/files/comic-neue-latin-700-normal.woff2') format('woff2');
+}
+
 /* Inter */
 
 @font-face {

@@ -1,6 +1,7 @@
 /**
- * Settings → Account: who is signed in and the Sync plan, above the Sync
- * panel. The plan card is the same one the profile dialog shows.
+ * Settings → Account: one Sync group holding who is signed in, what is waiting
+ * to sync, and the plan that pays for it. The plan card is the same one the
+ * profile dialog shows.
  *
  * This is also where checkout returns (`?billing=done`): the webhook may not
  * have landed yet, so Polar is asked directly once, then the flag is dropped
@@ -16,6 +17,8 @@ import { SignInButton, useAuth, useUser } from '@clerk/react'
 import { UserRound } from 'lucide-react'
 
 import { PlanCard } from '@/components/account/plan-card'
+import { SettingsGroup } from '@/components/settings/settings-group'
+import { SyncStatus } from '@/components/sync/sync-panel'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -46,17 +49,10 @@ export function AccountSettingsPanel() {
 
   const name = user?.fullName ?? user?.username ?? 'Signed in'
 
-  return (
-    <section className="rounded-lg border border-border bg-card">
-      <header className="flex items-baseline justify-between gap-3 border-b border-border px-4 py-3">
-        <h2 className="text-sm font-medium">Account</h2>
-        {isSignedIn === false ? (
-          <span className="text-xs text-muted-foreground">Signed out</span>
-        ) : null}
-      </header>
-
-      {isSignedIn === undefined ? (
-        <div className="space-y-3 px-4 py-4">
+  if (isSignedIn === undefined) {
+    return (
+      <SettingsGroup title="Sync">
+        <div className="space-y-4 px-4 py-4">
           <div className="flex items-center gap-3">
             <Skeleton className="size-10 rounded-full" />
             <div className="space-y-1.5">
@@ -64,39 +60,49 @@ export function AccountSettingsPanel() {
               <Skeleton className="h-3 w-44" />
             </div>
           </div>
-          <Skeleton className="h-24 w-full rounded-md" />
+          <Skeleton className="h-8 w-16" />
+          <Skeleton className="h-9 w-full rounded-md" />
         </div>
-      ) : isSignedIn ? (
-        <div className="space-y-4 px-4 py-4">
-          <div className="flex items-center gap-3">
-            <Avatar size="lg">
-              {user?.imageUrl ? <AvatarImage src={user.imageUrl} alt="" /> : null}
-              <AvatarFallback className="font-medium">{initialsOf(name)}</AvatarFallback>
-            </Avatar>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{name}</p>
-              <p className="truncate text-xs text-muted-foreground">
-                {user?.primaryEmailAddress?.emailAddress}
-              </p>
-            </div>
-          </div>
+      </SettingsGroup>
+    )
+  }
 
-          <PlanCard />
+  if (!isSignedIn) {
+    return (
+      <SettingsGroup title="Account">
+        <EmptyState
+          icon={UserRound}
+          title="Not signed in"
+          description="Sign in to subscribe and sync your library across devices."
+          className="rounded-none border-0"
+          action={
+            <SignInButton mode="modal">
+              <Button className="h-10 md:h-9">Sign in</Button>
+            </SignInButton>
+          }
+        />
+      </SettingsGroup>
+    )
+  }
+
+  return (
+    <SettingsGroup title="Sync">
+      <div className="flex items-center gap-3 px-4 py-3">
+        <Avatar size="lg">
+          {user?.imageUrl ? <AvatarImage src={user.imageUrl} alt="" /> : null}
+          <AvatarFallback className="font-medium">{initialsOf(name)}</AvatarFallback>
+        </Avatar>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">{name}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {user?.primaryEmailAddress?.emailAddress}
+          </p>
         </div>
-      ) : (
-        <div className="px-4 py-4">
-          <EmptyState
-            icon={UserRound}
-            title="Not signed in"
-            description="Sign in to subscribe and sync across devices."
-            action={
-              <SignInButton mode="modal">
-                <Button>Sign in</Button>
-              </SignInButton>
-            }
-          />
-        </div>
-      )}
-    </section>
+      </div>
+
+      <SyncStatus />
+
+      <PlanCard className="rounded-none border-0 px-4 py-3" />
+    </SettingsGroup>
   )
 }

@@ -22,6 +22,7 @@ import { isPrimableTextSource } from '@/lib/sources/types'
 
 import { backgroundFetchIdFor, takeCachedBody } from './background-fetch'
 import type { SaveChapterResult, SaveOptions } from './types'
+import { describeError } from '@/lib/ui/describe-error'
 
 /**
  * Refuses to store a chapter that came back empty.
@@ -57,7 +58,7 @@ export async function saveChapterTextOffline(
     return {
       ok: false,
       reason: 'network',
-      message: messageOf(error),
+      message: describeError(error),
     }
   }
 
@@ -83,7 +84,7 @@ export async function saveChapterTextOffline(
   } catch (error) {
     // A half-written save would show as saved with nothing behind it.
     await deleteSavedChapterRows(chapterId).catch(() => undefined)
-    return { ok: false, reason: 'network', message: messageOf(error) }
+    return { ok: false, reason: 'network', message: describeError(error) }
   }
 
   const bytes = byteLength(text.html)
@@ -137,9 +138,6 @@ function cancelled(): SaveChapterResult {
   return { ok: false, reason: 'cancelled', message: 'Saving was cancelled.' }
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
 function isAbortError(error: unknown): boolean {
   return (

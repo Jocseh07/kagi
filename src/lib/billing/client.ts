@@ -6,8 +6,9 @@
  * customer portal, and each brings the reader back to Settings when done.
  */
 
-import type { PlanSummary, SubscriptionSummary } from '@/server/polar'
+import type { PlanSummary, SubscriptionSummary } from '@/lib/billing/types'
 import type { TokenSource } from '@/lib/sync/client'
+import { apiUrl } from '@/lib/sources/app-origin'
 
 export type { PlanSummary, SubscriptionSummary }
 
@@ -25,7 +26,7 @@ async function authorizedJson<T>(
 ): Promise<T> {
   const token = await getToken()
   if (!token) throw new Error('Not signed in.')
-  const response = await fetch(path, {
+  const response = await fetch(apiUrl(path), {
     ...init,
     headers: { ...init?.headers, Authorization: `Bearer ${token}` },
   })
@@ -47,7 +48,7 @@ export async function fetchEntitlement(
 }
 
 export async function fetchPlan(): Promise<PlanSummary> {
-  const response = await fetch('/api/billing/plan')
+  const response = await fetch(apiUrl('/api/billing/plan'))
   if (!response.ok) throw new Error(`Request failed: ${response.status}`)
   return (await response.json()) as PlanSummary
 }
@@ -82,20 +83,30 @@ export function formatDate(iso: string): string {
   })
 }
 
-export async function openCheckout(getToken: TokenSource): Promise<void> {
+/** The hosted checkout page's URL, for callers that open it themselves. */
+export async function fetchCheckoutUrl(getToken: TokenSource): Promise<string> {
   const { url } = await authorizedJson<{ url: string }>(
     getToken,
     '/api/billing/checkout',
     { method: 'POST' },
   )
-  window.location.assign(url)
+  return url
 }
 
-export async function openPortal(getToken: TokenSource): Promise<void> {
+/** The customer portal's URL, for callers that open it themselves. */
+export async function fetchPortalUrl(getToken: TokenSource): Promise<string> {
   const { url } = await authorizedJson<{ url: string }>(
     getToken,
     '/api/billing/portal',
     { method: 'POST' },
   )
-  window.location.assign(url)
+  return url
+}
+
+export async function openCheckout(getToken: TokenSource): Promise<void> {
+  window.location.assign(await fetchCheckoutUrl(getToken))
+}
+
+export async function openPortal(getToken: TokenSource): Promise<void> {
+  window.location.assign(await fetchPortalUrl(getToken))
 }

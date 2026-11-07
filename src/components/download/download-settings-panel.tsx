@@ -1,14 +1,10 @@
 import { Link } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { ArrowUpRight } from 'lucide-react'
+
+import { SettingRow, SettingsGroup } from '@/components/settings/settings-group'
+import { Combobox } from '@/components/ui/combobox'
 import { Switch } from '@/components/ui/switch'
 import { useDatabase } from '@/lib/db/provider'
 import { getFlag, getSetting, setFlag, setSetting } from '@/lib/db/repositories'
@@ -31,6 +27,7 @@ import {
 } from '@/lib/download/queue-types'
 import { supportsBackgroundFetch } from '@/lib/offline/background-fetch'
 import { SETTING_BACKGROUND_DOWNLOADS, supportsOfflineSave } from '@/lib/offline/types'
+import { describeError } from '@/lib/ui/describe-error'
 
 const CONCURRENCY_QUERY_KEY = ['db', 'setting', SETTING_QUEUE_CONCURRENCY] as const
 
@@ -62,6 +59,24 @@ const MANGA_CHOICES = Array.from(
   { length: MAX_MANGA_CONCURRENCY - MIN_MANGA_CONCURRENCY + 1 },
   (_, index) => MIN_MANGA_CONCURRENCY + index,
 )
+
+const COMIC_OPTIONS = COMIC_CONCURRENCY_CHOICES.map((value) => ({
+  value: String(value),
+  label:
+    value === DEFAULT_QUEUE_CONCURRENCY ? `${value} (default)` : String(value),
+}))
+
+const NOVEL_OPTIONS = NOVEL_CONCURRENCY_CHOICES.map((value) => ({
+  value: String(value),
+  label:
+    value === DEFAULT_NOVEL_CONCURRENCY ? `${value} (default)` : String(value),
+}))
+
+const MANGA_OPTIONS = MANGA_CHOICES.map((value) => ({
+  value: String(value),
+  label:
+    value === DEFAULT_MANGA_CONCURRENCY ? `${value} (default)` : String(value),
+}))
 
 export function DownloadSettingsPanel() {
   const { status } = useDatabase()
@@ -165,15 +180,12 @@ export function DownloadSettingsPanel() {
 
   if (!supportsOfflineSave()) {
     return (
-      <section className="rounded-lg border border-border bg-card">
-        <header className="border-b border-border px-4 py-3">
-          <h2 className="text-sm font-medium">Downloads</h2>
-        </header>
+      <SettingsGroup title="Queue">
         <p className="px-4 py-4 text-sm text-muted-foreground">
           This browser has no service worker or Cache API support, so chapters
           cannot be downloaded for offline reading.
         </p>
-      </section>
+      </SettingsGroup>
     )
   }
 
@@ -200,189 +212,139 @@ export function DownloadSettingsPanel() {
     ? saveBackgroundFetch.variables
     : (backgroundFetch.data ?? true)
 
+  const failed =
+    save.error ??
+    saveNovelConcurrency.error ??
+    saveMangaConcurrency.error ??
+    saveAutoClear.error ??
+    saveBackgroundFetch.error
+
   return (
-    <section className="rounded-lg border border-border bg-card">
-      <header className="flex items-baseline justify-between gap-3 border-b border-border px-4 py-3">
-        <h2 className="text-sm font-medium">Downloads</h2>
+    <SettingsGroup
+      title="Queue"
+      aside={
         <Link
           to="/downloads"
-          className="text-xs text-primary underline-offset-4 hover:underline"
+          className="-my-2 inline-flex h-10 items-center gap-1 hover:text-foreground md:h-8"
         >
           Open the queue
+          <ArrowUpRight className="size-3.5" aria-hidden />
         </Link>
-      </header>
-
-      <div className="divide-y divide-border">
-        <div className="flex items-center gap-4 px-4 py-3">
-          <div className="min-w-0 flex-1 space-y-0.5">
-            <Label htmlFor="queue-concurrency" className="font-normal">
-              Chapters at a time per series (comics)
-            </Label>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Shares one site's rate limit across more chapters. 1 finishes
-              each chapter soonest.
-            </p>
-          </div>
-          <div className="shrink-0">
-            <Select
-              value={String(current)}
-              disabled={!ready || concurrency.isPending || save.isPending}
-              onValueChange={(value) => save.mutate(Number.parseInt(value, 10))}
-            >
-              <SelectTrigger id="queue-concurrency" className="w-24">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {COMIC_CONCURRENCY_CHOICES.map((value) => (
-                  <SelectItem key={value} value={String(value)}>
-                    {value}
-                    {value === DEFAULT_QUEUE_CONCURRENCY ? ' (default)' : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4 px-4 py-3">
-          <div className="min-w-0 flex-1 space-y-0.5">
-            <Label htmlFor="novel-concurrency" className="font-normal">
-              Chapters at a time per series (novels)
-            </Label>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Novel chapters are small, so many can save together.
-            </p>
-          </div>
-          <div className="shrink-0">
-            <Select
-              value={String(currentNovel)}
-              disabled={
-                !ready ||
-                novelConcurrency.isPending ||
-                saveNovelConcurrency.isPending
-              }
-              onValueChange={(value) =>
-                saveNovelConcurrency.mutate(Number.parseInt(value, 10))
-              }
-            >
-              <SelectTrigger id="novel-concurrency" className="w-24">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {NOVEL_CONCURRENCY_CHOICES.map((value) => (
-                  <SelectItem key={value} value={String(value)}>
-                    {value}
-                    {value === DEFAULT_NOVEL_CONCURRENCY ? ' (default)' : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4 px-4 py-3">
-          <div className="min-w-0 flex-1 space-y-0.5">
-            <Label htmlFor="manga-concurrency" className="font-normal">
-              Series at a time
-            </Label>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Higher stops one long backlog holding up the rest.
-            </p>
-          </div>
-          <div className="shrink-0">
-            <Select
-              value={String(currentMangas)}
-              disabled={
-                !ready ||
-                mangaConcurrency.isPending ||
-                saveMangaConcurrency.isPending
-              }
-              onValueChange={(value) =>
-                saveMangaConcurrency.mutate(Number.parseInt(value, 10))
-              }
-            >
-              <SelectTrigger id="manga-concurrency" className="w-24">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MANGA_CHOICES.map((value) => (
-                  <SelectItem key={value} value={String(value)}>
-                    {value}
-                    {value === DEFAULT_MANGA_CONCURRENCY ? ' (default)' : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {supportsBackgroundFetch() && (
-          <div className="flex items-center gap-4 px-4 py-3">
-            <div className="min-w-0 flex-1 space-y-0.5">
-              <Label htmlFor="queue-background" className="font-normal">
-                Keep downloading in the background
-              </Label>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                Continues with the tab hidden or the app closed.
-              </p>
+      }
+    >
+      {/* Comics and novels answer the same question with different ceilings,
+          so they share a row. */}
+      <SettingRow
+        label="Chapters at a time per series"
+        hint="More spreads one site's rate limit. 1 finishes each chapter soonest."
+        className="@md:flex-col @md:items-stretch @lg:flex-row @lg:items-center"
+        control={
+          <div className="grid grid-cols-2 gap-2 @lg:w-52">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">Comics</span>
+              <Combobox
+                id="queue-concurrency"
+                label="Chapters at a time per series, comics"
+                panel="narrow"
+                className="w-full"
+                options={COMIC_OPTIONS}
+                value={String(current)}
+                disabled={!ready || concurrency.isPending || save.isPending}
+                onChange={(value) => save.mutate(Number.parseInt(value, 10))}
+              />
             </div>
-            <div className="shrink-0">
-              <Switch
-                id="queue-background"
-                checked={backgroundOn}
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">Novels</span>
+              <Combobox
+                id="novel-concurrency"
+                label="Chapters at a time per series, novels"
+                panel="narrow"
+                className="w-full"
+                options={NOVEL_OPTIONS}
+                value={String(currentNovel)}
                 disabled={
                   !ready ||
-                  backgroundFetch.isPending ||
-                  saveBackgroundFetch.isPending
+                  novelConcurrency.isPending ||
+                  saveNovelConcurrency.isPending
                 }
-                onCheckedChange={(checked) =>
-                  saveBackgroundFetch.mutate(checked)
+                onChange={(value) =>
+                  saveNovelConcurrency.mutate(Number.parseInt(value, 10))
                 }
               />
             </div>
           </div>
-        )}
+        }
+      />
 
-        <div className="flex items-center gap-4 px-4 py-3">
-          <div className="min-w-0 flex-1 space-y-0.5">
-            <Label htmlFor="queue-auto-clear" className="font-normal">
-              Remove finished chapters from the list
-            </Label>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Finished rows leave the queue. The chapter itself is kept.
-            </p>
-          </div>
-          <div className="shrink-0">
+      <SettingRow
+        id="manga-concurrency"
+        label="Series at a time"
+        hint="Higher stops one long backlog holding up the rest."
+        className="@md:flex-col @md:items-stretch @lg:flex-row @lg:items-center"
+        control={
+          <Combobox
+            id="manga-concurrency"
+            label="Series at a time"
+            panel="narrow"
+            className="w-full @lg:w-52"
+            options={MANGA_OPTIONS}
+            value={String(currentMangas)}
+            disabled={
+              !ready ||
+              mangaConcurrency.isPending ||
+              saveMangaConcurrency.isPending
+            }
+            onChange={(value) =>
+              saveMangaConcurrency.mutate(Number.parseInt(value, 10))
+            }
+          />
+        }
+      />
+
+      {supportsBackgroundFetch() && (
+        <SettingRow
+          id="queue-background"
+          inline
+          label="Keep downloading in the background"
+          hint="Continues with the tab hidden or the app closed."
+          control={
             <Switch
-              id="queue-auto-clear"
-              checked={autoClearOn}
-              disabled={!ready || autoClear.isPending || saveAutoClear.isPending}
-              onCheckedChange={(checked) => saveAutoClear.mutate(checked)}
+              id="queue-background"
+              checked={backgroundOn}
+              disabled={
+                !ready ||
+                backgroundFetch.isPending ||
+                saveBackgroundFetch.isPending
+              }
+              onCheckedChange={(checked) => saveBackgroundFetch.mutate(checked)}
             />
-          </div>
-        </div>
-      </div>
-
-      {(save.isError ||
-        saveNovelConcurrency.isError ||
-        saveMangaConcurrency.isError ||
-        saveAutoClear.isError ||
-        saveBackgroundFetch.isError) && (
-        <p className="px-4 pb-3 text-xs text-destructive">
-          Could not save that:{' '}
-          {messageOf(
-            save.error ??
-              saveNovelConcurrency.error ??
-              saveMangaConcurrency.error ??
-              saveAutoClear.error ??
-              saveBackgroundFetch.error,
-          )}
-        </p>
+          }
+        />
       )}
-    </section>
+
+      <SettingRow
+        id="queue-auto-clear"
+        inline
+        label="Clear finished rows from the queue"
+        hint={
+          failed ? (
+            <span role="alert" className="text-destructive">
+              Could not save that. {describeError(failed)}
+            </span>
+          ) : (
+            'The chapter itself is kept.'
+          )
+        }
+        control={
+          <Switch
+            id="queue-auto-clear"
+            checked={autoClearOn}
+            disabled={!ready || autoClear.isPending || saveAutoClear.isPending}
+            onCheckedChange={(checked) => saveAutoClear.mutate(checked)}
+          />
+        }
+      />
+    </SettingsGroup>
   )
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : 'unknown error'
-}

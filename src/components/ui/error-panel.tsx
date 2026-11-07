@@ -1,8 +1,10 @@
-import { CloudOff, ExternalLink, ShieldAlert, TriangleAlert } from 'lucide-react'
+import { CloudOff, DatabaseZap, ExternalLink, ShieldAlert, TriangleAlert } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { DbError } from '@/lib/db/client'
 import { isOnline } from '@/lib/offline/use-online'
 import { ChallengeRequiredError, CorsBlockedError } from '@/lib/transport/types'
+import { describeError } from '@/lib/ui/describe-error'
 import { cn } from '@/lib/utils'
 
 export function ErrorPanel({
@@ -25,6 +27,7 @@ export function ErrorPanel({
   // the whole point, once the check has been cleared in the other tab.
   const retryable = kind !== 'cors'
   const siteUrl = error instanceof ChallengeRequiredError ? error.siteUrl : null
+  const message = kind === 'offline' ? 'This needs a connection to load.' : describeError(error)
 
   return (
     <div
@@ -43,10 +46,7 @@ export function ErrorPanel({
       />
       <div className="min-w-0 flex-1 space-y-1">
         <p className="text-sm font-medium text-foreground">{TITLES[kind]}</p>
-        <p className="text-sm text-muted-foreground">{messageOf(error, kind)}</p>
-        {HINTS[kind] && (
-          <p className="text-xs text-muted-foreground">{HINTS[kind]}</p>
-        )}
+        <p className="text-base text-muted-foreground sm:text-sm">{message}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {siteUrl && (
@@ -62,14 +62,21 @@ export function ErrorPanel({
             {siteUrl ? 'Try again' : 'Retry'}
           </Button>
         )}
+        {!onRetry && kind === 'library' && (
+          <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+            Reload
+          </Button>
+        )}
       </div>
     </div>
   )
 }
 
-type Kind = 'offline' | 'challenge' | 'cors' | 'unknown'
+type Kind = 'offline' | 'challenge' | 'cors' | 'library' | 'unknown'
 
 function kindOf(error: unknown): Kind {
+  // The library is local, so a connection has nothing to do with it failing.
+  if (error instanceof DbError) return 'library'
   // Ahead of the rest: with no interface to reach anything, whatever the
   // source threw on the way down describes the symptom and not the cause.
   if (!isOnline()) return 'offline'
@@ -82,38 +89,14 @@ const ICONS: Record<Kind, typeof TriangleAlert> = {
   offline: CloudOff,
   challenge: ShieldAlert,
   cors: ShieldAlert,
+  library: DatabaseZap,
   unknown: TriangleAlert,
 }
 
 const TITLES: Record<Kind, string> = {
   offline: "You're offline",
-  challenge: "The site wants to check you're human",
+  challenge: 'Human check needed',
   cors: 'Blocked by the browser',
-  unknown: 'Could not load this source',
-}
-
-const HINTS: Record<Kind, string | null> = {
-  // The banner under the header says what still works while offline; this
-  // panel only has to account for the one thing that did not.
-  offline: null,
-  // Deliberately not a promise. The check is cleared in the reader's own
-  // browser, while the page is fetched by the dev proxy — a separate client
-  // whose cookies we cannot reach — so clearing it helps when the block was
-  // by address, and not otherwise.
-  challenge:
-    'Open the site in a new tab, pass the check there, then come back and ' +
-    'try again. If it is still blocked, waiting a minute usually clears it.',
-  cors:
-    'Nothing is wrong with your connection. A source can refuse one page ' +
-    'origin while allowing another, so check the address bar before ' +
-    'concluding the source is unreachable.',
-  unknown: null,
-}
-
-function messageOf(error: unknown, kind: Kind): string {
-  // The thrown message here is whatever failed on the way to a network that
-  // is not there — a symptom, and never the one the reader needs.
-  if (kind === 'offline') return 'This needs a connection to load.'
-  if (error instanceof Error) return error.message
-  return 'An unexpected error occurred while talking to the source.'
+  library: 'Library unavailable',
+  unknown: 'Could not load',
 }

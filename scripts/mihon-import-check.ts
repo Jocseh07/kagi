@@ -8,7 +8,7 @@
  * conflict clause that keeps an import from walking progress backwards is not
  * something to take on faith.
  *
- *   pnpm exec tsx scripts/mihon-import-check.ts ~/Downloads/<file>.tachibk
+ *   bunx tsx scripts/mihon-import-check.ts ~/Downloads/<file>.tachibk
  */
 
 import { readFileSync } from 'node:fs'

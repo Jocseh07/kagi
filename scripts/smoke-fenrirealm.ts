@@ -1,7 +1,7 @@
 /**
  * Exercises the Fenrir Realm source against the live API, outside a browser.
  *
- * Run: pnpm exec tsx scripts/smoke-fenrirealm.ts
+ * Run: bunx tsx scripts/smoke-fenrirealm.ts
  *
  * No DOMParser stand-in is needed. The source is pure JSON and does its own
  * decoy stripping with string operations precisely so that it behaves the same

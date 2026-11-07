@@ -37,12 +37,12 @@ export function MangaListRow({
   return (
     <div
       className={cn(
-        'flex items-center gap-2.5 overflow-hidden rounded-md border border-border bg-card',
+        'flex items-center gap-2.5 overflow-hidden rounded-lg border border-border bg-card',
         showCover ? 'h-18 px-2' : 'h-14 px-3',
         // The same hover fill the chapter rows use, so the two dense surfaces
         // respond alike. A translucent primary tint marks a selection rather
         // than a solid fill, which would need its own foreground pairing.
-        'transition-colors group-hover:bg-secondary group-focus-visible:border-primary',
+        'transition-colors group-hover:bg-secondary group-focus-visible:border-primary group-focus-visible:ring-3 group-focus-visible:ring-ring/50',
         selected && 'border-primary bg-primary/10 ring-2 ring-primary',
         className,
       )}
@@ -50,12 +50,14 @@ export function MangaListRow({
       {showCover ? (
         <MangaCover
           url={thumbnailUrl}
-          title={title}
-          className="h-14 w-auto shrink-0 rounded-sm"
+          // The row draws the focus ring; the cover inside it does not repeat it.
+          className="h-14 w-auto shrink-0 rounded-sm group-focus-visible:ring-0"
         />
       ) : null}
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-foreground">{title}</p>
+        <p className="line-clamp-2 text-sm leading-tight wrap-break-word text-foreground" title={title}>
+          {title}
+        </p>
         {meta ? (
           <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
             {meta}
@@ -81,7 +83,7 @@ export function MangaListSkeleton({
         <div
           key={index}
           className={cn(
-            'flex items-center gap-2.5 rounded-md border border-border',
+            'flex items-center gap-2.5 rounded-lg border border-border',
             showCover ? 'h-18 px-2' : 'h-14 px-3',
           )}
         >

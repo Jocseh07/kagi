@@ -29,12 +29,13 @@ export function AppBottomNav() {
           <Link
             key={item.to}
             to={item.to}
+            activeOptions={{ exact: item.to === '/' }}
             // `data-status` rather than `activeProps`, so the active colour
             // wins by variant order instead of by class-string order.
             className={TAB}
           >
             <item.icon className="size-5" />
-            <span className="text-[11px] leading-none font-medium">{item.label}</span>
+            <span className="text-2xs leading-none font-medium">{item.label}</span>
           </Link>
         ))}
       </div>
