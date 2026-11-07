@@ -1,0 +1,19 @@
+{
+  "name": "kagi-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Kagi desktop app",
+  "main": "dist/main.js",
+  "scripts": {
+    "bundle": "bun build src/main.ts src/preload.ts --target=node --format=cjs --external electron --outdir dist",
+    "dev": "bun run bundle && electron .",
+    "build": "bun scripts/build.ts"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0"
+  },
+  "dependencies": {
+    "undici": "^7.30.1"
+  }
+}

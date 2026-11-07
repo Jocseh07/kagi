@@ -1,0 +1,11 @@
+appId: app.kagi.desktop
+productName: Kagi
+directories:
+  output: release
+files:
+  - dist/**
+  - package.json
+linux:
+  target: AppImage
+  category: Graphics
+  icon: ../public/icon-512.png
