@@ -30,12 +30,13 @@
   },
   /* The sync routes and the source proxies live under src/ now and are
      compiled by tsconfig.app.json along with the app they share their schema
-     and wire format with. What is left here is the two config files that
+     and wire format with. What is left here is the three config files that
      genuinely run in Node. The smoke scripts under scripts/ are deliberately
      absent, as they always have been: they import browser-targeted source
      modules and have never been part of this project. */
   "include": [
     "vite.config.ts",
-    "drizzle.config.ts"
+    "drizzle.config.ts",
+    "alchemy.run.ts"
   ]
 }
