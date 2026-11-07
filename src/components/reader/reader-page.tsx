@@ -247,7 +247,7 @@ function PageImage({
       >
         <ErrorPanel
           title={`${label} did not load`}
-          detail="The image request failed. Other pages are unaffected — retry just this one."
+          detail="The image failed to load. Retry this page."
         >
           <ToolbarButton variant="solid" onClick={onRetry}>
             Retry page

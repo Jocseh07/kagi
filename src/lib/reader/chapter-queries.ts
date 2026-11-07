@@ -1,10 +1,11 @@
-import { chapterKeyOf } from '@/components/reader/chapter-picker'
+import { chapterKeyOf } from '@/lib/reader/chapter-key'
 import {
   getChapterPages,
   getChapterText,
   getMangaByUrl,
   listChapters,
 } from '@/lib/db/repositories'
+import { dbKeys } from '@/lib/db/query-keys'
 import type { Chapter, Manga } from '@/lib/db/schema'
 import { isTextSource } from '@/lib/sources/types'
 import type {
@@ -80,6 +81,41 @@ export function storedUpdateQueryOptions(sourceId: string, slug: string) {
         return { manga: toSManga(row), chapters: stored.map(toSChapter) }
       } catch {
         return null
+      }
+    },
+  }
+}
+
+/** How far into one stored chapter the reader is. */
+export interface StoredChapterState {
+  read: boolean
+  lastPageRead: number
+  pageCount: number
+}
+
+/**
+ * Read state of every stored chapter in a series, keyed by chapter url: what
+ * the reader's chapter list marks as unread, current and read.
+ *
+ * Under `allChapters`, which every read-state writer already invalidates.
+ * A failure is an empty map: the list still works, it just loses the marks.
+ */
+export function storedChapterStateQueryOptions(sourceId: string, slug: string) {
+  return {
+    queryKey: [...dbKeys.allChapters, 'reader-state', sourceId, slug] as const,
+    queryFn: async (): Promise<ReadonlyMap<string, StoredChapterState>> => {
+      try {
+        const row = await getMangaByUrl(sourceId, mangaStubOf(slug).url)
+        if (!row) return new Map()
+        const stored = await listChapters(row.id)
+        return new Map(
+          stored.map((item) => [
+            item.url,
+            { read: item.read, lastPageRead: item.lastPageRead, pageCount: item.pageCount },
+          ]),
+        )
+      } catch {
+        return new Map()
       }
     },
   }

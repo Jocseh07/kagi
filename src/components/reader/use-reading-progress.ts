@@ -18,8 +18,8 @@ interface ReadingProgressOptions {
    * has been applied — writing then would overwrite it with page one.
    */
   enabled: boolean
-  /** Fired after the chapter is recorded as read, so callers can refresh. */
-  onChapterRead?: () => void
+  /** Fired after a chapter is recorded as read, with its id, so callers can refresh. */
+  onChapterRead?: (chapterId: string) => void
 }
 
 export interface ReadingProgress {
@@ -31,6 +31,8 @@ export interface ReadingProgress {
    * below, so a chapter cannot be written or announced twice.
    */
   markReadNow(): void
+  /** Writes the queued page now instead of waiting out the interval. */
+  saveNow(): void
 }
 
 /**
@@ -82,7 +84,7 @@ export function useReadingProgress({
     if (markedRead.current === id) return
     markedRead.current = id
     void markChapterRead(id, true).then(
-      () => notify.current?.(),
+      () => notify.current?.(id),
       () => {
         // Let a later page turn try again rather than silently staying unread.
         markedRead.current = null
@@ -119,11 +121,13 @@ export function useReadingProgress({
       if (document.visibilityState === 'hidden') flush()
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('pagehide', flush)
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('pagehide', flush)
       flush()
     }
   }, [flush])
 
-  return { markReadNow }
+  return { markReadNow, saveNow: flush }
 }
